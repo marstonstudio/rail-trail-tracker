@@ -1280,6 +1280,7 @@ function parseFit(buffer, filename, current = 0, total = 0) {
     hasFitGps: !!pendingPolyline,
     pointCount: polyline.length,
     queueInfo,
+    filename,
     candidates,
     dupTrail,
     fitFingerprint: fp,
@@ -1400,10 +1401,13 @@ function openModal(id = null, prefill = null) {
   const matchPicker = document.getElementById('match-picker');
   const noMatchEl   = document.getElementById('no-match-banner');
 
+  const fitLabel = prefill?.filename
+    ? `📥 ${prefill.filename.replace(/\.fit$/i, '')}${prefill.queueInfo || ''}`
+    : prefill && !prefill.fromNearby ? `📥 Import FIT${prefill.queueInfo || ''}` : null;
   document.getElementById('modal-title').textContent =
     prefill?.fromNearby ? `Log Ride — ${prefill.name}` :
-    prefill ? `📥 Import FIT${prefill.queueInfo || ''}` :
-    id ? 'Edit Ride' : 'Log a Ride';
+    fitLabel ||
+    (id ? 'Edit Ride' : 'Log a Ride');
 
   // Reset all banners
   banner.classList.remove('visible');
@@ -1477,12 +1481,12 @@ function openModal(id = null, prefill = null) {
             <input type="radio" name="trail-match" value="${escHtml(c.trail.id)}"
               ${i === 0 ? 'checked' : ''}
               onchange="onMatchPick('${c.trail.id}','${escHtml(c.trail.name).replace(/'/g,"\\'")}','${escHtml(c.trail.state).replace(/'/g,"\\'")}')">
-            ${escHtml(c.trail.name)}<span class="match-dist">${c.distMi.toFixed(1)} mi from route center</span>
+            <span>${escHtml(c.trail.name)}</span><span class="match-dist">${c.distMi.toFixed(1)} mi from route center</span>
           </label>`).join('');
         document.getElementById('match-picker-options').innerHTML = optionsHtml + `
           <label class="match-option">
             <input type="radio" name="trail-match" value="" onchange="onMatchPick('','','')">
-            None of these — save as custom ride
+            <span>None of these — save as custom ride</span>
           </label>`;
         matchPicker.classList.add('visible');
       }
