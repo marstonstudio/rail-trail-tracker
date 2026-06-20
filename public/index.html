@@ -874,9 +874,12 @@ const NEARBY_TRAILS = [
   { id:'n53', name:'Hudson Valley Rail Trail',               state:'NY',   miles:7.1,  distMi:147, surface:'Paved',               lat:41.717, lng:-74.006, url:'https://www.traillink.com/trail/hudson-valley-rail-trail/',                       desc:'Highland to New Paltz under spectacular stone-arch bridges over Black Creek' },
   { id:'n54', name:'Wallkill Valley Rail Trail',             state:'NY',   miles:24,   distMi:152, surface:'Gravel',               lat:41.690, lng:-74.148, url:'https://www.traillink.com/trail/wallkill-valley-rail-trail/',                     desc:'Gardiner to Rosendale over the 150-ft Rosendale Trestle with sweeping Hudson Valley views' },
   { id:'n55', name:'Kennebec River Rail Trail',              state:'ME',   miles:6.5,  distMi:152, surface:'Paved',               lat:44.316, lng:-69.780, url:'https://www.traillink.com/trail/kennebec-river-rail-trail/',                       desc:'Augusta to Gardiner — flat paved path along the Kennebec River in central Maine' },
-  { id:'n56', name:'Stowe Recreation Path',                  state:'VT',   miles:5.5,  distMi:155, surface:'Paved',               lat:44.466, lng:-72.688, url:'https://www.traillink.com/trail/stowe-recreation-path/',                          desc:'Stowe village path through the scenic northern Vermont countryside with 255 ft of gentle gain' },
-  { id:'n57', name:'Lamoille Valley Rail Trail',             state:'VT',   miles:93,   distMi:160, surface:'Crushed stone',        lat:44.543, lng:-72.594, url:'https://railtrails.vermont.gov/trails/lamoille-valley-rail-trail/',                desc:"New England's longest rail trail — 93 miles from St. Johnsbury to Swanton across 18 Vermont towns" },
-  { id:'n58', name:'Island Line Trail',                      state:'VT',   miles:14,   distMi:170, surface:'Paved/Crushed stone',  lat:44.469, lng:-73.228, url:'https://www.traillink.com/trail/island-line-trail/',                             desc:'Burlington waterfront to South Hero across Lake Champlain via the 3-mile Colchester Causeway' },
+  { id:'n56', name:'Stowe Recreation Path',                  state:'VT',   miles:5.5,  distMi:155, surface:'Paved',               lat:44.466, lng:-72.688, url:'https://www.traillink.com/trail/stowe-recreation-path/',                          desc:'Stowe village path through the scenic northern Vermont countryside with 255 ft of gentle gain',
+    osmNames:['Stowe Recreation Path','Stowe Recreational Path','Stowe Bike Path'] },
+  { id:'n57', name:'Lamoille Valley Rail Trail',             state:'VT',   miles:93,   distMi:160, surface:'Crushed stone',        lat:44.543, lng:-72.594, url:'https://railtrails.vermont.gov/trails/lamoille-valley-rail-trail/',                desc:"New England's longest rail trail — 93 miles from St. Johnsbury to Swanton across 18 Vermont towns",
+    osmNames:['Lamoille Valley Rail Trail','Lamoille Valley Railroad'] },
+  { id:'n58', name:'Island Line Trail',                      state:'VT',   miles:14,   distMi:170, surface:'Paved/Crushed stone',  lat:44.469, lng:-73.228, url:'https://www.traillink.com/trail/island-line-trail/',                             desc:'Burlington waterfront to South Hero across Lake Champlain via the 3-mile Colchester Causeway',
+    osmNames:['Island Line Trail','Island Line Rail Trail','Burlington Greenway','Colchester Causeway'] },
   { id:'n59', name:'Catskill Scenic Trail',                  state:'NY',   miles:25.6, distMi:175, surface:'Gravel',               lat:42.230, lng:-74.640, url:'https://www.traillink.com/trail/catskill-scenic-trail/',                         desc:'Bloomville to Roxbury along the West Branch of the Delaware River in the Catskill Mountains' },
   { id:'n60', name:'Missisquoi Valley Rail Trail',           state:'VT',   miles:26.3, distMi:185, surface:'Crushed stone',        lat:44.812, lng:-73.084, url:'https://www.traillink.com/trail/missisquoi-valley-rail-trail/',                   desc:'St. Albans to Richford near the Canadian border through Vermont dairy farms and cornfields' },
 ];
@@ -1370,7 +1373,7 @@ let pendingDiscovered = [];
 const fetchedBboxKeys = new Set();
 
 const OVERPASS_URL        = 'https://overpass-api.de/api/interpreter';
-const OVERPASS_TIMEOUT_MS = 5000;
+const OVERPASS_TIMEOUT_MS = 12000;
 const MAX_CACHED_PTS      = 300;
 
 // Stop-words excluded when comparing trail names.
@@ -1435,11 +1438,14 @@ out geom qt;`;
       const osmName = el.tags.name;
       const pts     = el.geometry.map(g => [g.lat, g.lon]);
 
-      // Try to match to a known NEARBY_TRAIL
+      // Try to match to a known NEARBY_TRAIL (check name + any osmNames aliases)
       let bestId = null, bestScore = 0.5; // threshold: at least 50% keyword overlap
       for (const t of NEARBY_TRAILS) {
-        const s = nameMatchScore(osmName, t.name);
-        if (s > bestScore) { bestScore = s; bestId = t.id; }
+        const namesToCheck = [t.name, ...(t.osmNames || [])];
+        for (const n of namesToCheck) {
+          const s = nameMatchScore(osmName, n);
+          if (s > bestScore) { bestScore = s; bestId = t.id; }
+        }
       }
 
       if (bestId) {
