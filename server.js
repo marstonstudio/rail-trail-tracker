@@ -2,34 +2,54 @@ const express = require('express');
 const fs      = require('fs');
 const path    = require('path');
 
-const app      = express();
-const PORT     = process.env.PORT      || 3000;
-const DATA_FILE = process.env.DATA_FILE || '/data/trails.json';
+const app        = express();
+const PORT       = process.env.PORT       || 3000;
+const RIDES_FILE = process.env.RIDES_FILE || '/data/rides.json';
 
-app.use(express.json({ limit: '20mb' })); // FIT polylines can be chunky
+app.use(express.json({ limit: '20mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ── GET /api/trails ──────────────────────────────────────────────────────────
-app.get('/api/trails', (req, res) => {
-  if (!fs.existsSync(DATA_FILE)) return res.json([]);
-  try {
-    const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    res.json(Array.isArray(data) ? data : []);
-  } catch {
-    res.json([]);
+// ── Startup: migrate old trails.json → rides.json if needed ──────────────────
+(function migrate() {
+  const OLD = path.join(path.dirname(RIDES_FILE), 'trails.json');
+  if (fs.existsSync(OLD) && !fs.existsSync(RIDES_FILE)) {
+    try {
+      fs.copyFileSync(OLD, RIDES_FILE);
+      console.log(`Migrated ${OLD} → ${RIDES_FILE}`);
+    } catch (e) {
+      console.warn('Migration failed:', e.message);
+    }
   }
+})();
+
+function ensureDir(file) {
+  const dir = path.dirname(file);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+// ── GET /api/rides ────────────────────────────────────────────────────────────
+app.get('/api/rides', (req, res) => {
+  if (!fs.existsSync(RIDES_FILE)) return res.json([]);
+  try {
+    const data = JSON.parse(fs.readFileSync(RIDES_FILE, 'utf8'));
+    res.json(Array.isArray(data) ? data : []);
+  } catch { res.json([]); }
 });
 
-// ── POST /api/trails ─────────────────────────────────────────────────────────
-app.post('/api/trails', (req, res) => {
-  const trails = req.body;
-  if (!Array.isArray(trails)) return res.status(400).json({ error: 'Expected array' });
+// ── POST /api/rides ───────────────────────────────────────────────────────────
+app.post('/api/rides', (req, res) => {
+  const rides = req.body;
+  if (!Array.isArray(rides)) return res.status(400).json({ error: 'Expected array' });
+  ensureDir(RIDES_FILE);
+  fs.writeFileSync(RIDES_FILE, JSON.stringify(rides, null, 2));
+  res.json({ ok: true, count: rides.length });
+});
 
-  const dir = path.dirname(DATA_FILE);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-
-  fs.writeFileSync(DATA_FILE, JSON.stringify(trails, null, 2));
-  res.json({ ok: true, count: trails.length });
+// ── DELETE /api/rides — reset all rides ───────────────────────────────────────
+app.delete('/api/rides', (req, res) => {
+  ensureDir(RIDES_FILE);
+  fs.writeFileSync(RIDES_FILE, JSON.stringify([], null, 2));
+  res.json({ ok: true });
 });
 
 // ── Catch-all → SPA ──────────────────────────────────────────────────────────
@@ -39,5 +59,5 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Rail Trail Tracker running on http://localhost:${PORT}`);
-  console.log(`Data file: ${DATA_FILE}`);
+  console.log(`Rides file: ${RIDES_FILE}`);
 });

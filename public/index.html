@@ -137,6 +137,67 @@
 
     .trail-list { padding: 8px; flex: 1; }
 
+    /* ── Rides panel header (count + reset) ─────────────────────────────────── */
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 12px 0;
+      flex-shrink: 0;
+    }
+    .panel-header-count {
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .reset-btn {
+      font-size: 0.72rem;
+      padding: 3px 8px;
+      border: 1px solid #fdd;
+      border-radius: 5px;
+      background: none;
+      color: #c44;
+      cursor: pointer;
+      transition: all 0.1s;
+    }
+    .reset-btn:hover { background: #fee; border-color: #fbb; }
+
+    /* ── Trail group cards (consolidated ride view) ───────────────────────────── */
+    .trail-group {
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--green);
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+    .tg-header {
+      padding: 11px 13px 8px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .tg-header:hover { background: var(--bg); }
+    .tg-name { font-weight: 600; font-size: 0.9rem; margin-bottom: 3px; }
+    .tg-summary { font-size: 0.78rem; color: var(--muted); }
+    .tg-rides { border-top: 1px solid var(--border); }
+    .tg-ride {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 13px;
+      font-size: 0.79rem;
+      color: var(--muted);
+      border-bottom: 1px solid #f0ede8;
+      cursor: pointer;
+      transition: background 0.12s;
+      position: relative;
+    }
+    .tg-ride:last-child { border-bottom: none; }
+    .tg-ride:hover { background: var(--bg); }
+    .tg-ride-date { flex: 1; }
+    .tg-ride-miles { color: var(--text); font-weight: 500; white-space: nowrap; }
+    .tg-ride-actions { display: none; gap: 4px; }
+    .tg-ride:hover .tg-ride-actions { display: flex; }
+
     /* ── My Rides cards ──────────────────────────────────────────────────────── */
     .ride-card {
       padding: 11px 13px;
@@ -618,6 +679,10 @@
       <button class="tab" onclick="switchTab('nearby')" id="tab-nearby">🗺️ Nearby <span id="nearby-count-badge" style="font-weight:400;opacity:.7">(17)</span></button>
     </div>
     <div class="tab-panel active" id="panel-rides">
+      <div class="panel-header" id="rides-panel-header" style="display:none">
+        <span class="panel-header-count" id="rides-count-label"></span>
+        <button class="reset-btn" onclick="resetAllRides()">Reset all</button>
+      </div>
       <div class="trail-list" id="list-rides"></div>
     </div>
     <div class="tab-panel" id="panel-nearby">
@@ -800,23 +865,35 @@ document.getElementById('nearby-count-badge').textContent = `(${NEARBY_TRAILS.le
 // ─── User data (server API) ───────────────────────────────────────────────────
 let trails = [];
 
-async function loadTrails() {
+async function loadRides() {
   try {
-    const res = await fetch('/api/trails');
+    const res = await fetch('/api/rides');
     if (!res.ok) return [];
     const data = await res.json();
     return Array.isArray(data) ? data : [];
   } catch { return []; }
 }
 
-async function persistTrails() {
+async function persistRides() {
   try {
-    await fetch('/api/trails', {
+    await fetch('/api/rides', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(trails)
     });
   } catch (e) { console.error('Save failed:', e); }
+}
+
+async function resetAllRides() {
+  const n = trails.length;
+  if (!n) return;
+  if (!confirm(`Remove all ${n} ride${n===1?'':'s'} and reset the database? This cannot be undone.`)) return;
+  try {
+    await fetch('/api/rides', { method: 'DELETE' });
+  } catch (e) { console.error('Reset failed:', e); }
+  Object.keys(mapLayers).forEach(id => removeLayer(mapLayers, id));
+  trails = [];
+  render();
 }
 
 let editingId = null;
@@ -983,27 +1060,88 @@ function render() {
 
 function renderRides() {
   const el = document.getElementById('list-rides');
+  const hdr = document.getElementById('rides-panel-header');
+  const countLbl = document.getElementById('rides-count-label');
+
   if (!trails.length) {
+    hdr.style.display = 'none';
     el.innerHTML = `<div class="empty-state"><div class="empty-icon">🚴</div><p>No rides logged yet.<br>Import a FIT file or click <strong>Log Ride</strong>.</p></div>`;
     return;
   }
-  const sorted = [...trails].sort((a,b) => (b.date||'').localeCompare(a.date||''));
-  el.innerHTML = sorted.map(t => `
-    <div class="ride-card" onclick="focusRidden('${t.id}')">
-      <div class="ride-card-name">
-        ${escHtml(t.name)}
-        ${t.polyline ? '<span class="gps-badge">GPS</span>' : ''}
+
+  // Show panel header
+  hdr.style.display = '';
+  const uniqueTrails = new Set(trails.map(t => t.nearbyId || t.name.toLowerCase().trim())).size;
+  countLbl.textContent = `${trails.length} ride${trails.length===1?'':'s'} · ${uniqueTrails} trail${uniqueTrails===1?'':'s'}`;
+
+  // Group rides by trail (nearbyId if set, else normalised name)
+  const groups = new Map();
+  for (const t of trails) {
+    const key = t.nearbyId || t.name.toLowerCase().trim();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(t);
+  }
+
+  // Sort groups by most recent ride date descending
+  const sortedGroups = [...groups.values()].sort((a, b) => {
+    const aMax = a.reduce((m, r) => r.date > m ? r.date : m, '');
+    const bMax = b.reduce((m, r) => r.date > m ? r.date : m, '');
+    return bMax.localeCompare(aMax);
+  });
+
+  el.innerHTML = sortedGroups.map(rides => {
+    // Sort rides within group newest-first
+    rides.sort((a, b) => (b.date||'').localeCompare(a.date||''));
+    const rep = rides[0];
+    const hasGps = rides.some(r => r.polyline);
+    const totalMiles = rides.reduce((s, r) => s + (parseFloat(r.miles)||0), 0);
+    const milesLabel = totalMiles > 0
+      ? (rides.length > 1 ? `${totalMiles % 1 === 0 ? totalMiles : totalMiles.toFixed(1)} mi total` : `${rep.miles} mi`)
+      : '';
+    const statePart = rep.state ? `${escHtml(rep.state)} · ` : '';
+    const countPart = rides.length > 1 ? `${rides.length} rides` : '1 ride';
+    const summary = [countPart, milesLabel, statePart.replace(' · ','')].filter(Boolean).join(' · ');
+
+    // For single-ride groups use the simpler card; for multi-ride use the group card
+    if (rides.length === 1) {
+      return `
+      <div class="ride-card" onclick="focusRidden('${rep.id}')">
+        <div class="ride-card-name">
+          ${escHtml(rep.name)}
+          ${hasGps ? '<span class="gps-badge">GPS</span>' : ''}
+        </div>
+        <div class="ride-card-meta">
+          ${rep.state ? `<span>📍 ${escHtml(rep.state)}</span>` : ''}
+          ${rep.miles ? `<span>📏 ${rep.miles} mi</span>` : ''}
+          ${rep.date ? `<span>📅 ${fmtDate(rep.date)}</span>` : ''}
+        </div>
+        <div class="ride-card-actions">
+          <button class="icon-btn" onclick="event.stopPropagation(); openModal('${rep.id}')">Edit</button>
+          <button class="icon-btn delete" onclick="event.stopPropagation(); deleteTrail('${rep.id}')">✕</button>
+        </div>
+      </div>`;
+    }
+
+    const rideRows = rides.map(r => `
+      <div class="tg-ride" onclick="event.stopPropagation(); focusRidden('${r.id}')">
+        <span class="tg-ride-date">${r.date ? fmtDate(r.date) : '—'}</span>
+        ${r.miles ? `<span class="tg-ride-miles">${r.miles} mi</span>` : ''}
+        ${r.polyline ? '<span class="gps-badge" style="margin:0">GPS</span>' : ''}
+        <div class="tg-ride-actions">
+          <button class="icon-btn" onclick="event.stopPropagation(); openModal('${r.id}')">Edit</button>
+          <button class="icon-btn delete" onclick="event.stopPropagation(); deleteTrail('${r.id}')">✕</button>
+        </div>
+      </div>`).join('');
+
+    return `
+    <div class="trail-group">
+      <div class="tg-header" onclick="focusRidden('${rep.id}')">
+        <div class="tg-name">${escHtml(rep.name)} ${hasGps ? '<span class="gps-badge">GPS</span>' : ''}</div>
+        <div class="tg-summary">${summary}</div>
       </div>
-      <div class="ride-card-meta">
-        ${t.state ? `<span>📍 ${escHtml(t.state)}</span>` : ''}
-        ${t.miles ? `<span>📏 ${t.miles} mi</span>` : ''}
-        ${t.date ? `<span>📅 ${fmtDate(t.date)}</span>` : ''}
-      </div>
-      <div class="ride-card-actions">
-        <button class="icon-btn" onclick="event.stopPropagation(); openModal('${t.id}')">Edit</button>
-        <button class="icon-btn delete" onclick="event.stopPropagation(); deleteTrail('${t.id}')">✕</button>
-      </div>
-    </div>`).join('');
+      <div class="tg-rides">${rideRows}</div>
+    </div>`;
+  }).join('');
 }
 
 function renderNearby() {
@@ -1861,7 +1999,7 @@ function saveTrail() {
     trails.push(trail);
   }
 
-  persistTrails();  // fire-and-forget; UI updates immediately
+  persistRides();  // fire-and-forget; UI updates immediately
   render();
   closeModal();
   switchTab('rides');
@@ -1872,7 +2010,7 @@ async function deleteTrail(id) {
   if (!confirm('Remove this ride?')) return;
   removeLayer(mapLayers, id);
   trails = trails.filter(t=>t.id!==id);
-  await persistTrails();
+  await persistRides();
   render();
 }
 
@@ -1897,7 +2035,7 @@ function fmtDate(iso) {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 (async () => {
-  trails = await loadTrails();
+  trails = await loadRides();
   // Migrate any old data that had status='wishlist'
   trails = trails.filter(t => !t.status || t.status === 'ridden');
   trails.forEach(t => { delete t.status; });

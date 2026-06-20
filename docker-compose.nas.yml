@@ -10,10 +10,10 @@ services:
       - ./data:/data
     environment:
       - PORT=3000
-      - DATA_FILE=/data/trails.json
+      - RIDES_FILE=/data/rides.json
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/trails"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/rides"]
       interval: 30s
       timeout: 5s
       retries: 3
