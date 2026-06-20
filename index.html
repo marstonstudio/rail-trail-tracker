@@ -366,6 +366,16 @@
     }
     .filter-chip.active { background: var(--bg); border-color: #bbb; color: var(--text); }
 
+    .radius-divider {
+      display: flex; align-items: center; gap: 8px;
+      margin: 10px 0 6px;
+      color: var(--muted); font-size: 0.7rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .radius-divider::before, .radius-divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+
     .empty-state {
       padding: 32px 16px;
       text-align: center;
@@ -856,7 +866,19 @@ const NEARBY_TRAILS = [
   { id:'n47', name:'Southwick Rail Trail',                    state:'MA',   miles:8,    distMi:87, surface:'Paved',         lat:42.062, lng:-72.769, url:'https://www.traillink.com/trail/southwick-rail-trail/',                         desc:'Southwick MA — connects to the Farmington Canal Heritage Trail in CT' },
   { id:'n48', name:'Farmington Canal Heritage Trail',         state:'CT',   miles:20,   distMi:89, surface:'Paved',         lat:41.870, lng:-72.810, url:'https://www.traillink.com/trail/farmington-canal-heritage-trail/',              desc:'Northern CT section of the historic 84-mile canal corridor to New Haven' },
   { id:'n49', name:'Norwottuck Rail Trail',                   state:'MA',   miles:10,   distMi:90, surface:'Paved',         lat:42.304, lng:-72.455, url:'https://www.traillink.com/trail/norwottuck-rail-trail/',                        desc:'Northampton to Belchertown through Amherst & Hadley — iconic Pioneer Valley ride' },
-  { id:'n50', name:'Ashuwillticook Rail Trail',               state:'MA',   miles:12,   distMi:94, surface:'Paved',         lat:42.637, lng:-73.121, url:'https://www.traillink.com/trail/ashuwillticook-rail-trail/',                   desc:'Lanesborough to Adams through the Berkshires alongside Cheshire Reservoir' },
+  { id:'n50', name:'Ashuwillticook Rail Trail',               state:'MA',   miles:12,   distMi:94,  surface:'Paved',               lat:42.637, lng:-73.121, url:'https://www.traillink.com/trail/ashuwillticook-rail-trail/',                        desc:'Lanesborough to Adams through the Berkshires alongside Cheshire Reservoir' },
+
+  // ── Extended radius: 100–250 mi from Concord MA ──────────────────────────────
+  { id:'n51', name:'Harlem Valley Rail Trail',               state:'NY',   miles:26.4, distMi:120, surface:'Paved',               lat:41.946, lng:-73.540, url:'https://www.traillink.com/trail/harlem-valley-rail-trail/',                       desc:'Wassaic to Ancram through the scenic Harlem Valley along the NY–CT border' },
+  { id:'n52', name:'Delaware & Hudson Rail Trail',           state:'VT',   miles:19.8, distMi:125, surface:'Gravel',               lat:43.610, lng:-73.177, url:'https://fpr.vermont.gov/dh-rail-trail',                                           desc:'Castleton to Poultney in western Vermont near the NY border' },
+  { id:'n53', name:'Hudson Valley Rail Trail',               state:'NY',   miles:7.1,  distMi:147, surface:'Paved',               lat:41.717, lng:-74.006, url:'https://www.traillink.com/trail/hudson-valley-rail-trail/',                       desc:'Highland to New Paltz under spectacular stone-arch bridges over Black Creek' },
+  { id:'n54', name:'Wallkill Valley Rail Trail',             state:'NY',   miles:24,   distMi:152, surface:'Gravel',               lat:41.690, lng:-74.148, url:'https://www.traillink.com/trail/wallkill-valley-rail-trail/',                     desc:'Gardiner to Rosendale over the 150-ft Rosendale Trestle with sweeping Hudson Valley views' },
+  { id:'n55', name:'Kennebec River Rail Trail',              state:'ME',   miles:6.5,  distMi:152, surface:'Paved',               lat:44.316, lng:-69.780, url:'https://www.traillink.com/trail/kennebec-river-rail-trail/',                       desc:'Augusta to Gardiner — flat paved path along the Kennebec River in central Maine' },
+  { id:'n56', name:'Stowe Recreation Path',                  state:'VT',   miles:5.5,  distMi:155, surface:'Paved',               lat:44.466, lng:-72.688, url:'https://www.traillink.com/trail/stowe-recreation-path/',                          desc:'Stowe village path through the scenic northern Vermont countryside with 255 ft of gentle gain' },
+  { id:'n57', name:'Lamoille Valley Rail Trail',             state:'VT',   miles:93,   distMi:160, surface:'Crushed stone',        lat:44.543, lng:-72.594, url:'https://railtrails.vermont.gov/trails/lamoille-valley-rail-trail/',                desc:"New England's longest rail trail — 93 miles from St. Johnsbury to Swanton across 18 Vermont towns" },
+  { id:'n58', name:'Island Line Trail',                      state:'VT',   miles:14,   distMi:170, surface:'Paved/Crushed stone',  lat:44.469, lng:-73.228, url:'https://www.traillink.com/trail/island-line-trail/',                             desc:'Burlington waterfront to South Hero across Lake Champlain via the 3-mile Colchester Causeway' },
+  { id:'n59', name:'Catskill Scenic Trail',                  state:'NY',   miles:25.6, distMi:175, surface:'Gravel',               lat:42.230, lng:-74.640, url:'https://www.traillink.com/trail/catskill-scenic-trail/',                         desc:'Bloomville to Roxbury along the West Branch of the Delaware River in the Catskill Mountains' },
+  { id:'n60', name:'Missisquoi Valley Rail Trail',           state:'VT',   miles:26.3, distMi:185, surface:'Crushed stone',        lat:44.812, lng:-73.084, url:'https://www.traillink.com/trail/missisquoi-valley-rail-trail/',                   desc:'St. Albans to Richford near the Canadian border through Vermont dairy farms and cornfields' },
 ];
 
 document.getElementById('stat-nearby-total').textContent = NEARBY_TRAILS.length;
@@ -1155,10 +1177,16 @@ function renderNearby() {
   const el = document.getElementById('list-nearby');
   const filtered = nearbyFilter === 'All' ? NEARBY_TRAILS : NEARBY_TRAILS.filter(n => n.surface === nearbyFilter);
 
-  el.innerHTML = filtered.map(n => {
+  let html = '';
+  let shownExtHeader = false;
+  for (const n of filtered) {
+    if (!shownExtHeader && n.distMi > 100) {
+      shownExtHeader = true;
+      html += `<div class="radius-divider"><span>Extended Range · 100–250 mi</span></div>`;
+    }
     const ridden = riddenForNearby(n.id);
     const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${n.lat},${n.lng}`;
-    return `
+    html += `
       <div class="nearby-card ${ridden ? 'is-ridden' : ''}">
         <div class="nearby-card-header">
           <div class="nearby-card-name ${ridden ? 'is-ridden' : ''}" onclick="focusNearby('${n.id}')">${escHtml(n.name)}</div>
@@ -1180,7 +1208,8 @@ function renderNearby() {
           ${!ridden ? `<button class="log-btn" onclick="openModalFromNearby('${n.id}')">+ Log Ride</button>` : ''}
         </div>
       </div>`;
-  }).join('');
+  }
+  el.innerHTML = html;
 }
 
 function setNearbyFilter(surface) {
