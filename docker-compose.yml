@@ -1,0 +1,21 @@
+# Local development — builds from source, mounts files live
+services:
+  rail-trails:
+    build: .
+    image: marstonstudio/rail-trail-tracker:latest
+    container_name: rail-trail-tracker
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/data              # persistent ride data
+      - ./public:/app/public      # frontend: edit → browser refresh
+      - ./server.js:/app/server.js  # backend: edit → docker-compose restart
+    environment:
+      - PORT=3000
+      - DATA_FILE=/data/trails.json
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/trails"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

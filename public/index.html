@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rail Trail Tracker</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green: #2d7a3a;
+      --green-light: #e8f5eb;
+      --blue: #2563b0;
+      --blue-light: #e8f0fb;
+      --bg: #f5f4f0;
+      --surface: #ffffff;
+      --border: #ddd9d0;
+      --text: #1a1a1a;
+      --muted: #6b6860;
+      --radius: 10px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    header h1 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--green);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .stats {
+      display: flex;
+      gap: 20px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .stats .stat-val { color: var(--text); font-size: 1rem; font-weight: 700; }
+
+    .header-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+
+    .import-btn {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 8px 14px;
+      border-radius: var(--radius);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s, border-color 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .import-btn:hover { background: var(--bg); border-color: #bbb; }
+
+    .add-btn {
+      background: var(--green);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: var(--radius);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .add-btn:hover { background: #225e2c; }
+
+    .main {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      height: calc(100vh - 61px);
+    }
+
+    #map { width: 100%; height: 100%; z-index: 0; }
+
+    .sidebar {
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      padding: 0 4px;
+      flex-shrink: 0;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 11px 8px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      border: none;
+      background: none;
+      cursor: pointer;
+      color: var(--muted);
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s;
+      white-space: nowrap;
+    }
+    .tab.active { color: var(--green); border-bottom-color: var(--green); }
+    .tab:hover:not(.active) { color: var(--text); }
+
+    .tab-panel { display: none; flex-direction: column; flex: 1; overflow-y: auto; }
+    .tab-panel.active { display: flex; }
+
+    .trail-list { padding: 8px; flex: 1; }
+
+    /* ── My Rides cards ──────────────────────────────────────────────────────── */
+    .ride-card {
+      padding: 11px 13px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--green);
+      margin-bottom: 6px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+    }
+    .ride-card:hover { border-color: #bbb; border-left-color: var(--green); background: var(--bg); }
+
+    .ride-card-name { font-weight: 600; font-size: 0.9rem; margin-bottom: 3px; }
+    .ride-card-meta { font-size: 0.78rem; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+
+    .gps-badge {
+      display: inline-block;
+      padding: 1px 5px;
+      background: var(--green-light);
+      color: var(--green);
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      margin-left: 4px;
+      vertical-align: middle;
+    }
+
+    .ride-card-actions {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      display: none;
+      gap: 4px;
+    }
+    .ride-card:hover .ride-card-actions { display: flex; }
+
+    .icon-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 3px 7px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      color: var(--muted);
+      transition: all 0.1s;
+    }
+    .icon-btn:hover { background: var(--bg); color: var(--text); }
+    .icon-btn.delete:hover { background: #fee; border-color: #faa; color: #c00; }
+
+    /* ── Nearby trail cards ──────────────────────────────────────────────────── */
+    .nearby-card {
+      padding: 12px 13px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--blue);
+      margin-bottom: 7px;
+      transition: background 0.15s;
+    }
+    .nearby-card.is-ridden { border-left-color: var(--green); }
+
+    .nearby-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .nearby-card-name {
+      font-weight: 600;
+      font-size: 0.88rem;
+      line-height: 1.3;
+      cursor: pointer;
+    }
+    .nearby-card-name:hover { color: var(--blue); }
+    .nearby-card-name.is-ridden:hover { color: var(--green); }
+
+    .ridden-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 7px;
+      background: var(--green-light);
+      color: var(--green);
+      border-radius: 20px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .nearby-card-meta {
+      font-size: 0.76rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+      line-height: 1.5;
+    }
+
+    .nearby-card-desc {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+
+    .nearby-card-actions {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .link-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 9px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-decoration: none;
+      transition: all 0.1s;
+      background: var(--bg);
+    }
+    .link-btn:hover { border-color: #bbb; color: var(--text); }
+
+    .log-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: var(--green);
+      color: white;
+      transition: background 0.1s;
+      margin-left: auto;
+    }
+    .log-btn:hover { background: #225e2c; }
+
+    /* Filter row in nearby panel */
+    .nearby-filter {
+      padding: 8px 10px 4px;
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .filter-chip {
+      padding: 4px 10px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: none;
+      color: var(--muted);
+      transition: all 0.1s;
+    }
+    .filter-chip.active { background: var(--bg); border-color: #bbb; color: var(--text); }
+
+    .empty-state {
+      padding: 32px 16px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .empty-state .empty-icon { font-size: 2rem; margin-bottom: 8px; }
+
+    /* Map legend */
+    .map-legend {
+      position: absolute;
+      bottom: 28px;
+      left: 10px;
+      z-index: 500;
+      background: white;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.75rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 7px; }
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border-radius: 14px;
+      padding: 28px;
+      width: 440px;
+      max-width: 95vw;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    }
+
+    .modal h2 { font-size: 1.05rem; font-weight: 700; margin-bottom: 20px; }
+
+    .import-banner {
+      display: none;
+      background: var(--green-light);
+      border: 1px solid #b2d9b8;
+      border-radius: 8px;
+      padding: 10px 13px;
+      font-size: 0.82rem;
+      color: var(--green);
+      margin-bottom: 16px;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .import-banner.visible { display: flex; }
+    .match-banner {
+      display: none;
+      background: #e8f0fe;
+      border: 1px solid #adc6f7;
+      border-radius: 8px;
+      padding: 10px 13px;
+      font-size: 0.82rem;
+      color: #1a56db;
+      margin-bottom: 16px;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .match-banner.visible { display: flex; }
+
+    .form-group { margin-bottom: 14px; }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      font-size: 0.9rem;
+      color: var(--text);
+      background: var(--bg);
+      transition: border-color 0.15s;
+      font-family: inherit;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--green); background: white; }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 20px;
+      justify-content: flex-end;
+    }
+
+    .btn-secondary {
+      padding: 9px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: none;
+      font-size: 0.9rem;
+      cursor: pointer;
+      color: var(--muted);
+    }
+    .btn-secondary:hover { background: var(--bg); }
+
+    .btn-primary {
+      padding: 9px 20px;
+      border: none;
+      border-radius: var(--radius);
+      background: var(--green);
+      color: white;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-primary:hover { background: #225e2c; }
+
+    .hint { font-size: 0.76rem; color: var(--muted); margin-top: 4px; }
+
+    /* Drop overlay */
+    .drop-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(45, 122, 58, 0.12);
+      border: 4px dashed var(--green);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--green);
+      pointer-events: none;
+    }
+    .drop-overlay.active { display: flex; }
+
+    /* Popup */
+    .lf-popup-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 4px; }
+    .lf-popup-meta { font-size: 0.8rem; color: #555; line-height: 1.6; }
+    .lf-popup-links { margin-top: 7px; display: flex; gap: 8px; }
+    .lf-popup-links a {
+      font-size: 0.75rem;
+      color: var(--blue);
+      text-decoration: none;
+      padding: 2px 7px;
+      border: 1px solid #cde;
+      border-radius: 5px;
+    }
+    .lf-popup-links a:hover { background: var(--blue-light); }
+    .lf-popup-log {
+      margin-top: 7px;
+      padding: 5px 10px;
+      background: var(--green);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+    }
+    .lf-popup-log:hover { background: #225e2c; }
+
+    @media (max-width: 800px) {
+      .main { grid-template-columns: 1fr; grid-template-rows: 320px 1fr; height: auto; }
+      .sidebar { border-left: none; border-top: 1px solid var(--border); min-height: 300px; }
+      .stats { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="drop-overlay" id="drop-overlay">📂 Drop FIT files to import</div>
+
+<header>
+  <h1>🚴 Rail Trail Tracker</h1>
+  <div class="stats">
+    <div><span class="stat-val" id="stat-ridden">0</span> rides logged</div>
+    <div><span class="stat-val" id="stat-miles">0</span> mi ridden</div>
+    <div><span class="stat-val" id="stat-nearby-done">0</span> / <span id="stat-nearby-total">17</span> nearby ridden</div>
+  </div>
+  <div class="header-actions">
+    <button class="import-btn" onclick="document.getElementById('fit-input').click()">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1v9M4 6l4 4 4-4"/><path d="M2 12v2h12v-2"/></svg>
+      Import FIT
+    </button>
+    <button class="add-btn" onclick="openModal()">+ Log Ride</button>
+  </div>
+  <input type="file" id="fit-input" accept=".fit" multiple style="display:none" onchange="handleFitInput(this)" />
+</header>
+
+<div class="main">
+  <div style="position:relative">
+    <div id="map" style="width:100%;height:100%"></div>
+    <div class="map-legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Ridden</div>
+      <div class="legend-item"><div class="legend-dot" style="background:white;border:2.5px solid var(--blue)"></div> Nearby trail</div>
+    </div>
+  </div>
+  <div class="sidebar">
+    <div class="sidebar-tabs">
+      <button class="tab active" onclick="switchTab('rides')" id="tab-rides">✅ My Rides</button>
+      <button class="tab" onclick="switchTab('nearby')" id="tab-nearby">🗺️ Nearby <span id="nearby-count-badge" style="font-weight:400;opacity:.7">(17)</span></button>
+    </div>
+    <div class="tab-panel active" id="panel-rides">
+      <div class="trail-list" id="list-rides"></div>
+    </div>
+    <div class="tab-panel" id="panel-nearby">
+      <div class="nearby-filter" id="surface-filter"></div>
+      <div class="trail-list" id="list-nearby"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit Modal -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModalOnOverlay(event)">
+  <div class="modal">
+    <h2 id="modal-title">Log a Ride</h2>
+
+    <div class="match-banner" id="match-banner">
+      <span>🗺️</span>
+      <div id="match-banner-text"></div>
+    </div>
+    <div class="import-banner" id="import-banner">
+      <span>✅</span>
+      <div id="import-banner-text"></div>
+    </div>
+
+    <div class="form-group">
+      <label>Trail Name</label>
+      <input type="text" id="f-name" placeholder="e.g. Minuteman Bikeway" />
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>State</label>
+        <input type="text" id="f-state" placeholder="MA" maxlength="5" style="text-transform:uppercase" />
+      </div>
+      <div class="form-group">
+        <label>Length (miles)</label>
+        <input type="number" id="f-miles" placeholder="e.g. 11.5" min="0" step="0.1" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Date Ridden</label>
+      <input type="date" id="f-date" />
+    </div>
+    <div class="form-group" id="location-group">
+      <label>Map Pin <span style="font-weight:400;text-transform:none">(optional — lat, lng)</span></label>
+      <div class="form-row">
+        <input type="number" id="f-lat" placeholder="Latitude" step="any" />
+        <input type="number" id="f-lng" placeholder="Longitude" step="any" />
+      </div>
+      <div class="hint">Right-click any location in Google Maps to copy coordinates.</div>
+    </div>
+    <div class="hint" id="fit-location-note" style="display:none;margin-bottom:14px">
+      📍 GPS route imported from FIT file.
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveTrail()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Nearby trail data (researched, within 100 mi of Concord MA) ──────────────
+const NEARBY_TRAILS = [
+  // ── 0–15 mi from Concord MA ──────────────────────────────────────────────────
+  { id:'n01', name:'Bruce Freeman Rail Trail',              state:'MA',    miles:20,   distMi:5,  surface:'Paved',         lat:42.399, lng:-71.471, url:'https://www.traillink.com/trail/bruce-freeman-rail-trail/',                        desc:'Lowell to Framingham through Concord, Acton & Sudbury' },
+  { id:'n02', name:'Minuteman Commuter Bikeway',             state:'MA',    miles:10.1, distMi:5,  surface:'Paved',         lat:42.476, lng:-71.257, url:'https://www.traillink.com/trail/minuteman-commuter-bikeway/',                       desc:'Bedford to Alewife through Lexington & Arlington' },
+  { id:'n03', name:'Assabet River Rail Trail',               state:'MA',    miles:12,   distMi:12, surface:'Paved',         lat:42.370, lng:-71.553, url:'https://www.traillink.com/trail/assabet-river-rail-trail/',                        desc:'Marlborough through Hudson, Stow, Maynard & Acton' },
+  { id:'n04', name:'Northern Strand Community Trail',        state:'MA',    miles:10,   distMi:14, surface:'Paved',         lat:42.450, lng:-71.055, url:'https://www.traillink.com/trail/northern-strand-community-trail/',                  desc:'Everett to Lynn through Malden, Revere & Saugus — bike to the sea' },
+  { id:'n05', name:'Tri-Community Greenway',                 state:'MA',    miles:6.5,  distMi:15, surface:'Paved',         lat:42.476, lng:-71.133, url:'https://www.traillink.com/trail/tri-community-greenway/',                          desc:'Stoneham to Woburn through Winchester' },
+  { id:'n06', name:'Wakefield-Lynnfield Rail Trail',         state:'MA',    miles:5,    distMi:15, surface:'Paved',         lat:42.510, lng:-71.062, url:'https://www.traillink.com/trail/wakefield-lynnfield-rail-trail/',                   desc:'Wakefield to Lynnfield along a former railroad corridor' },
+  // ── 20–30 mi ────────────────────────────────────────────────────────────────
+  { id:'n07', name:'Nashua River Rail Trail',                state:'MA/NH', miles:12,   distMi:22, surface:'Paved',         lat:42.721, lng:-71.608, url:'https://www.traillink.com/trail/nashua-river-rail-trail/',                        desc:'Ayer MA to Nashua NH through Groton, Pepperell & Dunstable' },
+  { id:'n08', name:'Windham Rail Trail',                     state:'NH',    miles:5.3,  distMi:24, surface:'Paved',         lat:42.812, lng:-71.303, url:'https://www.traillink.com/trail/windham-rail-trail/',                             desc:'Scenic paved trail through Windham, NH' },
+  { id:'n09', name:'Salem Bike-Ped Corridor',                state:'NH',    miles:5.2,  distMi:24, surface:'Paved/Gravel',  lat:42.786, lng:-71.240, url:'https://fsbpc.org',                                                              desc:'Salem to Windham NH — 2 miles paved, rest crushed stone' },
+  { id:'n10', name:'Potanipo Rail Trail',                    state:'NH',    miles:6.5,  distMi:25, surface:'Gravel',        lat:42.729, lng:-71.665, url:'https://plcnh.org/potanipo-rail-trail/',                                          desc:'Brookline to Hollis through quiet southern NH countryside' },
+  { id:'n11', name:'Upper Charles Rail Trail',               state:'MA',    miles:9,    distMi:25, surface:'Paved',         lat:42.195, lng:-71.456, url:'https://www.traillink.com/trail/upper-charles-rail-trail/',                        desc:'Holliston to Milford through the Upper Charles River valley' },
+  { id:'n12', name:'Mass Central Rail Trail',                state:'MA',    miles:64,   distMi:27, surface:'Paved/mixed',   lat:42.280, lng:-71.800, url:'https://www.traillink.com/trail/mass-central-rail-trail/',                        desc:'64+ miles open from Northampton toward Boston across multiple sections' },
+  { id:'n13', name:'Blackstone River Greenway',              state:'MA',    miles:20,   distMi:28, surface:'Paved/mixed',   lat:42.198, lng:-71.793, url:'https://www.traillink.com/trail/blackstone-river-greenway/',                      desc:'Worcester south to RI border along the historic Blackstone River' },
+  { id:'n14', name:'Mason-Greenville Rail Trail',            state:'NH',    miles:9.1,  distMi:28, surface:'Gravel',        lat:42.748, lng:-71.755, url:'https://www.traillink.com/trail/mason-railroad-trail/',                           desc:'Mason to Greenville NH through quiet rural southern NH' },
+  // ── 30–45 mi ────────────────────────────────────────────────────────────────
+  { id:'n15', name:'Southern New England Trunkline Trail',   state:'MA',    miles:22,   distMi:32, surface:'Crushed stone', lat:42.060, lng:-71.652, url:'https://en.wikipedia.org/wiki/Southern_New_England_Trunkline_Trail',              desc:'Wrentham to Douglas through Franklin & Bellingham' },
+  { id:'n16', name:'World War II Veterans Memorial Trail',   state:'MA',    miles:6,    distMi:33, surface:'Paved',         lat:42.012, lng:-71.194, url:'https://www.traillink.com/trail/world-war-ii-veterans-memorial-trail/',            desc:'Mansfield to Norton along a former railroad right-of-way' },
+  { id:'n17', name:'Rockingham Rail Trail (Fremont Branch)', state:'NH',    miles:18,   distMi:35, surface:'Gravel',        lat:42.930, lng:-71.175, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/rockingham-recreational-rail-trail,-fremont-branch', desc:'Windham to Epping NH along a southern NH rail corridor' },
+  { id:'n18', name:'Blackstone River Bikeway',               state:'RI',    miles:11.6, distMi:36, surface:'Paved',         lat:41.948, lng:-71.492, url:'https://www.traillink.com/trail/blackstone-river-bikeway/',                      desc:'Cumberland to Woonsocket along the historic Blackstone Canal' },
+  { id:'n19', name:'Rockingham Recreational Trail',          state:'NH',    miles:26,   distMi:37, surface:'Gravel',        lat:43.002, lng:-71.253, url:'https://www.traillink.com/trail/rockingham-recreational-trail/',                  desc:'Manchester to Fremont through Derry & Sandown, NH' },
+  { id:'n20', name:'Goffstown Rail Trail',                   state:'NH',    miles:5.5,  distMi:39, surface:'Gravel',        lat:42.993, lng:-71.617, url:'http://www.goffstownrailtrail.org/',                                             desc:'Goffstown to Manchester through scenic rural NH' },
+  { id:'n21', name:'Monadnock Rail Trail',                   state:'NH',    miles:7.5,  distMi:43, surface:'Gravel',        lat:42.817, lng:-72.042, url:'https://www.traillink.com/trail/monadnock-recreational-rail-trail/',              desc:'Jaffrey to Rindge NH in the shadow of Mt. Monadnock' },
+  { id:'n22', name:'Peterborough Rail Trail',                state:'NH',    miles:6,    distMi:43, surface:'Gravel',        lat:42.867, lng:-71.950, url:'https://www.traillink.com/trail/peterborough-and-hillsborough-railroad-trail/',   desc:'Peterborough to Hancock through the scenic Monadnock Region' },
+  // ── 45–55 mi ────────────────────────────────────────────────────────────────
+  { id:'n23', name:'Rockingham Rail Trail (Portsmouth Branch)', state:'NH', miles:25.3, distMi:45, surface:'Gravel',        lat:43.050, lng:-71.098, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/rockingham-recreational-rail-trail,-portsmouth-bra', desc:'Manchester to Newfields NH heading toward the seacoast' },
+  { id:'n24', name:'Cheshire Rail Trail South',               state:'NH',   miles:18.5, distMi:46, surface:'Gravel',        lat:42.870, lng:-72.076, url:'https://www.traillink.com/trail/cheshire-rail-trail-(cheshire-branch-rail-trail)/', desc:'Fitzwilliam to Keene NH through the rolling Cheshire Hills' },
+  { id:'n25', name:'Grand Trunk Trail',                       state:'MA',   miles:7,    distMi:46, surface:'Gravel',        lat:42.096, lng:-72.076, url:'https://www.trekksturbridge.org/grand-trunk-trail',                              desc:'Sturbridge MA rail corridor (a.k.a. Titanic Rail Trail)' },
+  { id:'n26', name:'Air Line State Park Trail',               state:'CT',   miles:22,   distMi:48, surface:'Gravel',        lat:41.900, lng:-71.870, url:'https://www.traillink.com/trail/air-line-state-park-trail-(north-section)/',     desc:'Eastern CT rail corridor connecting to the SNETT at the MA border' },
+  { id:'n27', name:'Washington Secondary Rail Trail',         state:'RI',   miles:19,   distMi:50, surface:'Gravel',        lat:41.755, lng:-71.553, url:'https://www.traillink.com/trail/washington-secondary-bike-path/',               desc:'Cranston to Coventry through rural western Rhode Island' },
+  { id:'n28', name:'East Bay Bike Path',                      state:'RI',   miles:14.5, distMi:53, surface:'Paved',         lat:41.698, lng:-71.275, url:'https://www.traillink.com/trail/east-bay-bike-path/',                           desc:'Providence to Bristol with waterfront views of Narragansett Bay' },
+  { id:'n29', name:'Concord–Lake Sunapee Rail Trail',         state:'NH',   miles:35,   distMi:53, surface:'Crushed stone', lat:43.150, lng:-71.860, url:'https://en.wikipedia.org/wiki/Concord-Lake_Sunapee_Rail_Trail',                  desc:'Concord NH to Newbury through Warner, Sutton & Bradford' },
+  { id:'n30', name:'NH Seacoast Greenway',                    state:'NH',   miles:8,    distMi:53, surface:'Paved/Gravel',  lat:43.017, lng:-70.870, url:'https://nhseacoastgreenway.org/',                                               desc:'Hampton to Portsmouth along the NH seacoast rail corridor' },
+  { id:'n31', name:'Hillsborough Rail Trail',                 state:'NH',   miles:8,    distMi:54, surface:'Gravel',        lat:43.113, lng:-71.906, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/hillsborough-recreational-rail-trail', desc:'Hillsborough NH — rolling countryside in central NH' },
+  // ── 55–70 mi ────────────────────────────────────────────────────────────────
+  { id:'n32', name:'Eastern Trail',                           state:'ME',   miles:65,   distMi:58, surface:'Paved/Gravel',  lat:43.290, lng:-70.720, url:'https://www.traillink.com/trail/eastern-trail/',                                 desc:'Kittery to South Portland ME — southern sections most accessible from Concord' },
+  { id:'n33', name:'Ashuelot Rail Trail',                     state:'NH',   miles:21,   distMi:60, surface:'Gravel/Paved',  lat:42.930, lng:-72.254, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/ashuelot-recreational-rail-trail', desc:'Keene to Winchester NH through the Ashuelot River valley' },
+  { id:'n34', name:'Cheshire Rail Trail North',               state:'NH',   miles:17.8, distMi:60, surface:'Gravel/Paved',  lat:43.012, lng:-72.295, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/cheshire-recreational-rail-trail', desc:'Keene to Walpole NH along the Connecticut River valley' },
+  { id:'n35', name:'Northern Rail Trail',                     state:'NH',   miles:59,   distMi:61, surface:'Paved/Gravel',  lat:43.350, lng:-71.900, url:'https://en.wikipedia.org/wiki/Northern_Rail_Trail',                             desc:'Boscawen to Lebanon — one of New Hampshire\'s longest rail trails' },
+  { id:'n36', name:'Fort Hill Recreational Rail Trail',       state:'NH',   miles:8,    distMi:64, surface:'Gravel',        lat:42.781, lng:-72.482, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/fort-hill-recreational-rail-trail', desc:'Hinsdale NH — rail corridor along the Connecticut River valley' },
+  { id:'n37', name:'Farmington Rail Trail',                   state:'NH',   miles:6,    distMi:66, surface:'Gravel',        lat:43.388, lng:-71.065, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/farmington-recreational-rail-trail', desc:'Farmington NH — peaceful rail corridor in central NH' },
+  // ── 68–80 mi ────────────────────────────────────────────────────────────────
+  { id:'n38', name:'Winnipesaukee River Trail',               state:'NH',   miles:5,    distMi:69, surface:'Paved',         lat:43.443, lng:-71.649, url:'https://www.traillink.com/trail/winnipesaukee-river-trail/',                     desc:'Franklin to Tilton NH along the Winnipesaukee River' },
+  { id:'n39', name:'Manhan Rail Trail',                       state:'MA',   miles:6,    distMi:71, surface:'Paved',         lat:42.267, lng:-72.673, url:'https://en.wikipedia.org/wiki/Manhan_Rail_Trail',                               desc:'Easthampton — short paved gem in the Pioneer Valley' },
+  { id:'n40', name:'Shining Sea Bikeway',                     state:'MA',   miles:10.7, distMi:73, surface:'Paved',         lat:41.560, lng:-70.638, url:'https://www.traillink.com/trail/shining-sea-bikeway/',                           desc:'Woods Hole to North Falmouth — Massachusetts\' oldest rail trail' },
+  { id:'n41', name:'Sugar River Rail Trail',                  state:'NH',   miles:9.5,  distMi:77, surface:'Gravel',        lat:43.371, lng:-72.174, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/sugar-river-recreational-rail-trail', desc:'Newport to Claremont NH through the Sugar River valley' },
+  { id:'n42', name:'Hop River State Park Trail',              state:'CT',   miles:20.8, distMi:78, surface:'Gravel',        lat:41.800, lng:-72.390, url:'https://www.traillink.com/trail/hop-river-state-park-trail/',                   desc:'Manchester to Windham CT — parallels the Hop River through eastern CT' },
+  { id:'n43', name:'Cotton Valley Rail Trail',                state:'NH',   miles:12,   distMi:78, surface:'Gravel',        lat:43.578, lng:-71.209, url:'https://cottonvalleyrailtrail.org/',                                            desc:'Wolfeboro to Wakefield NH in the Lakes Region' },
+  { id:'n44', name:'Columbia Greenway Rail Trail',            state:'MA',   miles:6.5,  distMi:78, surface:'Paved',         lat:42.119, lng:-72.749, url:'https://www.traillink.com/trail/columbia-greenway-rail-trail/',                 desc:'Westfield MA — Pioneer Valley rail corridor near Springfield' },
+  // ── 80–100 mi ───────────────────────────────────────────────────────────────
+  { id:'n45', name:'Cape Cod Rail Trail',                     state:'MA',   miles:25.5, distMi:83, surface:'Paved',         lat:41.783, lng:-70.049, url:'https://www.traillink.com/trail/cape-cod-rail-trail/',                          desc:'Dennis to Wellfleet through Brewster & Orleans' },
+  { id:'n46', name:'Old Colony Rail Trail',                   state:'MA',   miles:9.4,  distMi:84, surface:'Paved',         lat:41.828, lng:-70.077, url:'https://www.traillink.com/trail/old-colony-rail-trail/',                        desc:'Harwich to Chatham on Cape Cod' },
+  { id:'n47', name:'Southwick Rail Trail',                    state:'MA',   miles:8,    distMi:87, surface:'Paved',         lat:42.062, lng:-72.769, url:'https://www.traillink.com/trail/southwick-rail-trail/',                         desc:'Southwick MA — connects to the Farmington Canal Heritage Trail in CT' },
+  { id:'n48', name:'Farmington Canal Heritage Trail',         state:'CT',   miles:20,   distMi:89, surface:'Paved',         lat:41.870, lng:-72.810, url:'https://www.traillink.com/trail/farmington-canal-heritage-trail/',              desc:'Northern CT section of the historic 84-mile canal corridor to New Haven' },
+  { id:'n49', name:'Norwottuck Rail Trail',                   state:'MA',   miles:10,   distMi:90, surface:'Paved',         lat:42.304, lng:-72.455, url:'https://www.traillink.com/trail/norwottuck-rail-trail/',                        desc:'Northampton to Belchertown through Amherst & Hadley — iconic Pioneer Valley ride' },
+  { id:'n50', name:'Ashuwillticook Rail Trail',               state:'MA',   miles:12,   distMi:94, surface:'Paved',         lat:42.637, lng:-73.121, url:'https://www.traillink.com/trail/ashuwillticook-rail-trail/',                   desc:'Lanesborough to Adams through the Berkshires alongside Cheshire Reservoir' },
+];
+
+document.getElementById('stat-nearby-total').textContent = NEARBY_TRAILS.length;
+document.getElementById('nearby-count-badge').textContent = `(${NEARBY_TRAILS.length})`;
+
+// ─── User data (server API) ───────────────────────────────────────────────────
+let trails = [];
+
+async function loadTrails() {
+  try {
+    const res = await fetch('/api/trails');
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch { return []; }
+}
+
+async function persistTrails() {
+  try {
+    await fetch('/api/trails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(trails)
+    });
+  } catch (e) { console.error('Save failed:', e); }
+}
+
+let editingId = null;
+let pendingPolyline = null;
+let pendingNearbyId = null;
+
+function genId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+// ─── Map ──────────────────────────────────────────────────────────────────────
+const map = L.map('map').setView([42.45, -71.4], 8);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  maxZoom: 18
+}).addTo(map);
+
+// Mark Concord MA
+L.circleMarker([42.4604, -71.3489], {
+  radius: 6, color: '#888', fillColor: '#fff', fillOpacity: 1, weight: 2
+}).addTo(map).bindTooltip('Concord, MA', { permanent: false });
+
+const mapLayers = {};     // trail id → ridden layer
+const nearbyMarkers = {}; // nearby id → blue marker
+
+function riddenIcon() {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:14px;height:14px;border-radius:50%;background:var(--green);border:2.5px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4)"></div>`,
+    iconSize: [14,14], iconAnchor:[7,7], popupAnchor:[0,-10]
+  });
+}
+
+function nearbyIcon() {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:13px;height:13px;border-radius:50%;background:white;border:2.5px solid #2563b0;box-shadow:0 1px 4px rgba(0,0,0,0.3)"></div>`,
+    iconSize: [13,13], iconAnchor:[6,6], popupAnchor:[0,-9]
+  });
+}
+
+function buildRiddenPopup(t) {
+  return `<div class="lf-popup-name">${escHtml(t.name)}</div>
+    <div class="lf-popup-meta">
+      ${t.state ? escHtml(t.state) + ' · ' : ''}${t.miles ? t.miles + ' mi' : ''}
+      ${t.date ? '<br>📅 ' + fmtDate(t.date) : ''}
+      <br><span style="color:var(--green);font-weight:700">✅ Ridden</span>
+    </div>`;
+}
+
+function buildNearbyPopup(n) {
+  const ridden = riddenForNearby(n.id);
+  const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${n.lat},${n.lng}`;
+  return `<div class="lf-popup-name">${escHtml(n.name)}</div>
+    <div class="lf-popup-meta">
+      ${n.state} · ${n.miles} mi · ${n.distMi} mi from Concord<br>
+      ${n.surface}
+      ${ridden ? '<br><span style="color:var(--green);font-weight:700">✅ Ridden</span>' : ''}
+    </div>
+    <div class="lf-popup-links">
+      <a href="${n.url}" target="_blank" rel="noopener">TrailLink ↗</a>
+      <a href="${gmapsUrl}" target="_blank" rel="noopener">Maps ↗</a>
+    </div>
+    ${!ridden ? `<button class="lf-popup-log" onclick="logRideFromNearby('${n.id}')">+ Log a Ride</button>` : ''}`;
+}
+
+function riddenForNearby(nearbyId) {
+  return trails.find(t => t.nearbyId === nearbyId);
+}
+
+function addRiddenToMap(t) {
+  removeLayer(mapLayers, t.id);
+  let layer;
+  if (t.polyline && t.polyline.length > 1) {
+    layer = L.polyline(t.polyline, { color:'#2d7a3a', weight:4, opacity:0.85 })
+      .addTo(map).bindPopup(buildRiddenPopup(t));
+  } else if (t.lat && t.lng) {
+    layer = L.marker([t.lat, t.lng], { icon: riddenIcon() })
+      .addTo(map).bindPopup(buildRiddenPopup(t));
+  }
+  if (layer) mapLayers[t.id] = layer;
+}
+
+function refreshNearbyMarkers() {
+  // Remove stale markers
+  Object.keys(nearbyMarkers).forEach(id => {
+    if (!NEARBY_TRAILS.find(n => n.id === id)) { nearbyMarkers[id].remove(); delete nearbyMarkers[id]; }
+  });
+
+  NEARBY_TRAILS.forEach(n => {
+    const isRidden = !!riddenForNearby(n.id);
+    if (!nearbyMarkers[n.id]) {
+      const m = L.marker([n.lat, n.lng], { icon: nearbyIcon(), zIndexOffset: -10 })
+        .addTo(map)
+        .bindPopup(buildNearbyPopup(n), { maxWidth: 220 });
+      nearbyMarkers[n.id] = m;
+    } else {
+      nearbyMarkers[n.id].setPopupContent(buildNearbyPopup(n));
+    }
+    // Show/hide based on ridden status
+    if (isRidden) {
+      nearbyMarkers[n.id].setOpacity(0.25);
+    } else {
+      nearbyMarkers[n.id].setOpacity(1);
+    }
+  });
+}
+
+function removeLayer(store, id) {
+  if (store[id]) { store[id].remove(); delete store[id]; }
+}
+
+function refreshMap() {
+  // Remove stale ridden layers
+  Object.keys(mapLayers).forEach(id => {
+    if (!trails.find(t => t.id === id)) removeLayer(mapLayers, id);
+  });
+  trails.forEach(t => addRiddenToMap(t));
+  refreshNearbyMarkers();
+}
+
+function focusRidden(id) {
+  const layer = mapLayers[id];
+  if (!layer) return;
+  const t = trails.find(x => x.id === id);
+  if (t?.polyline?.length > 1) {
+    map.fitBounds(layer.getBounds(), { padding:[40,40], maxZoom:14 });
+  } else {
+    map.setView(layer.getLatLng(), 13, { animate:true });
+  }
+  layer.openPopup();
+}
+
+function focusNearby(id) {
+  const n = NEARBY_TRAILS.find(x => x.id === id);
+  if (!n) return;
+  // If ridden and has polyline, show that
+  const ridden = riddenForNearby(id);
+  if (ridden && mapLayers[ridden.id]) {
+    focusRidden(ridden.id);
+    return;
+  }
+  map.setView([n.lat, n.lng], 12, { animate:true });
+  nearbyMarkers[id]?.openPopup();
+}
+
+// Called from popup button
+window.logRideFromNearby = function(nearbyId) {
+  map.closePopup();
+  openModalFromNearby(nearbyId);
+};
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+let nearbyFilter = 'All';
+
+function render() {
+  renderRides();
+  renderNearby();
+  updateStats();
+  refreshMap();
+}
+
+function renderRides() {
+  const el = document.getElementById('list-rides');
+  if (!trails.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🚴</div><p>No rides logged yet.<br>Import a FIT file or click <strong>Log Ride</strong>.</p></div>`;
+    return;
+  }
+  const sorted = [...trails].sort((a,b) => (b.date||'').localeCompare(a.date||''));
+  el.innerHTML = sorted.map(t => `
+    <div class="ride-card" onclick="focusRidden('${t.id}')">
+      <div class="ride-card-name">
+        ${escHtml(t.name)}
+        ${t.polyline ? '<span class="gps-badge">GPS</span>' : ''}
+      </div>
+      <div class="ride-card-meta">
+        ${t.state ? `<span>📍 ${escHtml(t.state)}</span>` : ''}
+        ${t.miles ? `<span>📏 ${t.miles} mi</span>` : ''}
+        ${t.date ? `<span>📅 ${fmtDate(t.date)}</span>` : ''}
+      </div>
+      <div class="ride-card-actions">
+        <button class="icon-btn" onclick="event.stopPropagation(); openModal('${t.id}')">Edit</button>
+        <button class="icon-btn delete" onclick="event.stopPropagation(); deleteTrail('${t.id}')">✕</button>
+      </div>
+    </div>`).join('');
+}
+
+function renderNearby() {
+  // Build filter chips
+  const surfaces = ['All', ...new Set(NEARBY_TRAILS.map(n => n.surface))];
+  const filterEl = document.getElementById('surface-filter');
+  filterEl.innerHTML = surfaces.map(s =>
+    `<button class="filter-chip ${s === nearbyFilter ? 'active' : ''}" onclick="setNearbyFilter('${s}')">${s}</button>`
+  ).join('');
+
+  const el = document.getElementById('list-nearby');
+  const filtered = nearbyFilter === 'All' ? NEARBY_TRAILS : NEARBY_TRAILS.filter(n => n.surface === nearbyFilter);
+
+  el.innerHTML = filtered.map(n => {
+    const ridden = riddenForNearby(n.id);
+    const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${n.lat},${n.lng}`;
+    return `
+      <div class="nearby-card ${ridden ? 'is-ridden' : ''}">
+        <div class="nearby-card-header">
+          <div class="nearby-card-name ${ridden ? 'is-ridden' : ''}" onclick="focusNearby('${n.id}')">${escHtml(n.name)}</div>
+          ${ridden ? `<span class="ridden-badge">✅ Ridden</span>` : ''}
+        </div>
+        <div class="nearby-card-meta">
+          ${n.state} &nbsp;·&nbsp; ${n.miles} mi trail &nbsp;·&nbsp; ${n.distMi} mi from Concord &nbsp;·&nbsp; ${n.surface}
+        </div>
+        <div class="nearby-card-desc">${escHtml(n.desc)}</div>
+        <div class="nearby-card-actions">
+          <a class="link-btn" href="${n.url}" target="_blank" rel="noopener">
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3H3a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1V9"/><path d="M10 2h4v4"/><path d="M14 2L8 8"/></svg>
+            Source
+          </a>
+          <a class="link-btn" href="${gmapsUrl}" target="_blank" rel="noopener">
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="7" r="3"/><path d="M8 2C5.24 2 3 4.24 3 7c0 4 5 8 5 8s5-4 5-8c0-2.76-2.24-5-5-5z"/></svg>
+            Map
+          </a>
+          ${!ridden ? `<button class="log-btn" onclick="openModalFromNearby('${n.id}')">+ Log Ride</button>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function setNearbyFilter(surface) {
+  nearbyFilter = surface;
+  renderNearby();
+}
+
+function updateStats() {
+  const miles = trails.reduce((s, t) => s + (parseFloat(t.miles)||0), 0);
+  document.getElementById('stat-ridden').textContent = trails.length;
+  document.getElementById('stat-miles').textContent = miles % 1 === 0 ? miles : miles.toFixed(1);
+  document.getElementById('stat-nearby-done').textContent = NEARBY_TRAILS.filter(n => riddenForNearby(n.id)).length;
+}
+
+// ─── Inline FIT Parser ────────────────────────────────────────────────────────
+// Parses binary .FIT files in the browser without any external library.
+// Returns { sessions: [{start_time: Date, total_distance: meters}], records: [{position_lat, position_long, timestamp: Date}] }
+function parseFitBuffer(buffer) {
+  const view  = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
+
+  // File header
+  const headerSize = bytes[0];
+  const sig = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]);
+  if (sig !== '.FIT') throw new Error('Not a valid FIT file (missing .FIT signature)');
+
+  const dataEnd = headerSize + view.getUint32(4, true);
+
+  // FIT epoch: 1989-12-31 00:00:00 UTC in Unix ms
+  const FIT_EPOCH_MS = 631065600000;
+  const SEMI_TO_DEG  = 180 / 2147483648; // 180 / 2^31
+
+  const defs    = {}; // localMsgNum → { globalMsgNum, fields, totalSize, le }
+  const sessions = [];
+  const records  = [];
+
+  let pos = headerSize;
+
+  while (pos < dataEnd) {
+    if (pos >= bytes.length) break;
+    const hdr = bytes[pos++];
+
+    // ── Compressed timestamp record ──────────────────────────────────────────
+    if (hdr & 0x80) {
+      const localNum = (hdr >> 5) & 0x3;
+      const def = defs[localNum];
+      if (!def) break;
+      const start = pos;
+      readDataMsg(def, pos, view, FIT_EPOCH_MS, SEMI_TO_DEG, sessions, records);
+      pos = start + def.totalSize;
+      continue;
+    }
+
+    const isDef      = (hdr & 0x40) !== 0;
+    const hasDevData = (hdr & 0x20) !== 0;
+    const localNum   = hdr & 0x0F;
+
+    // ── Definition message ───────────────────────────────────────────────────
+    if (isDef) {
+      pos++; // reserved byte
+      const le           = bytes[pos++] === 0; // 0=LE, 1=BE
+      const globalMsgNum = le ? view.getUint16(pos, true) : view.getUint16(pos, false);
+      pos += 2;
+      const numFields = bytes[pos++];
+
+      const fields = [];
+      let totalSize = 0;
+      for (let i = 0; i < numFields; i++) {
+        const fieldNum = bytes[pos++];
+        const size     = bytes[pos++];
+        pos++;           // base type (not needed for our purposes)
+        fields.push({ fieldNum, size });
+        totalSize += size;
+      }
+
+      // FIT 2.0 developer fields — skip their definitions but track their size
+      if (hasDevData) {
+        const numDev = bytes[pos++];
+        for (let i = 0; i < numDev; i++) {
+          const devSize = bytes[pos + 1];
+          pos += 3;
+          totalSize += devSize;
+        }
+      }
+
+      defs[localNum] = { globalMsgNum, fields, totalSize, le };
+
+    // ── Data message ─────────────────────────────────────────────────────────
+    } else {
+      const def = defs[localNum];
+      if (!def) { pos++; continue; }
+      const start = pos;
+      readDataMsg(def, pos, view, FIT_EPOCH_MS, SEMI_TO_DEG, sessions, records);
+      pos = start + def.totalSize;
+    }
+  }
+
+  return { sessions, records };
+}
+
+function readDataMsg(def, pos, view, FIT_EPOCH_MS, SEMI_TO_DEG, sessions, records) {
+  const INVALID_UINT32 = 0xFFFFFFFF;
+  const INVALID_SINT32 = 0x7FFFFFFF;
+
+  if (def.globalMsgNum === 18) {
+    // Session — fields: 2=start_time, 9=total_distance (m×100)
+    const s = {};
+    let p = pos;
+    for (const f of def.fields) {
+      if (f.fieldNum === 2 && f.size === 4) {
+        const v = view.getUint32(p, def.le);
+        if (v !== INVALID_UINT32) s.start_time = new Date(FIT_EPOCH_MS + v * 1000);
+      } else if (f.fieldNum === 9 && f.size === 4) {
+        const v = view.getUint32(p, def.le);
+        if (v !== INVALID_UINT32) s.total_distance = v / 100; // → meters
+      }
+      p += f.size;
+    }
+    sessions.push(s);
+
+  } else if (def.globalMsgNum === 20) {
+    // Record — fields: 253=timestamp, 0=lat, 1=lng
+    const r = {};
+    let p = pos;
+    for (const f of def.fields) {
+      if (f.fieldNum === 253 && f.size === 4) {
+        const v = view.getUint32(p, def.le);
+        if (v !== INVALID_UINT32) r.timestamp = new Date(FIT_EPOCH_MS + v * 1000);
+      } else if (f.fieldNum === 0 && f.size === 4) {
+        const v = view.getInt32(p, def.le);
+        if (v !== INVALID_SINT32) r.position_lat = v * SEMI_TO_DEG;
+      } else if (f.fieldNum === 1 && f.size === 4) {
+        const v = view.getInt32(p, def.le);
+        if (v !== INVALID_SINT32) r.position_long = v * SEMI_TO_DEG;
+      }
+      p += f.size;
+    }
+    records.push(r);
+  }
+}
+
+// ─── Trail matching ───────────────────────────────────────────────────────────
+const MATCH_THRESHOLD_MI = 5; // max distance from track centroid to trail marker
+
+function haversineMi(lat1, lng1, lat2, lng2) {
+  const R = 3958.8;
+  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(Δφ/2)**2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function trackCentroid(pts) {
+  const n = pts.length;
+  return [
+    pts.reduce((s, p) => s + p[0], 0) / n,
+    pts.reduce((s, p) => s + p[1], 0) / n
+  ];
+}
+
+function findNearbyMatch(polyline) {
+  if (polyline.length < 2) return null;
+  const [cLat, cLng] = trackCentroid(polyline);
+  let best = null, bestDist = MATCH_THRESHOLD_MI;
+  for (const t of NEARBY_TRAILS) {
+    const d = haversineMi(cLat, cLng, t.lat, t.lng);
+    if (d < bestDist) { bestDist = d; best = { trail: t, distMi: d }; }
+  }
+  return best;
+}
+
+// ─── FIT Import ───────────────────────────────────────────────────────────────
+let previewLayer = null;
+let fitQueue = [];
+let fitBatchTotal = 0;
+
+function handleFitInput(input) {
+  fitQueue = [...input.files].filter(f => f.name.toLowerCase().endsWith('.fit'));
+  input.value = '';
+  fitBatchTotal = fitQueue.length;
+  processNextFit();
+}
+
+function processNextFit() {
+  if (!fitQueue.length) return;
+  const file = fitQueue.shift();
+  const current = fitBatchTotal - fitQueue.length;
+  readFitFile(file, current, fitBatchTotal);
+}
+
+function readFitFile(file, current = 0, total = 0) {
+  const reader = new FileReader();
+  reader.onload = e => parseFit(e.target.result, file.name, current, total);
+  reader.readAsArrayBuffer(file);
+}
+
+function parseFit(buffer, filename, current = 0, total = 0) {
+  let data;
+  try {
+    data = parseFitBuffer(buffer);
+  } catch (e) {
+    alert('Could not read FIT file: ' + e.message);
+    return;
+  }
+
+  // ── Date ────────────────────────────────────────────────────────────────────
+  const session   = data.sessions?.[0];
+  const startTime = session?.start_time || data.records?.find(r => r.timestamp)?.timestamp;
+  let date = '';
+  if (startTime instanceof Date && !isNaN(startTime)) {
+    date = startTime.toISOString().split('T')[0];
+  }
+
+  // ── Distance ─────────────────────────────────────────────────────────────────
+  let miles = '';
+  if (session?.total_distance) {
+    // total_distance already in meters from parseFitBuffer
+    miles = (session.total_distance * 0.000621371).toFixed(1);
+  }
+
+  // ── GPS track ─────────────────────────────────────────────────────────────────
+  const raw = [];
+  (data.records || []).forEach(r => {
+    const lat = r.position_lat, lng = r.position_long;
+    if (lat == null || lng == null) return;
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) raw.push([lat, lng]);
+  });
+
+  const polyline = downsample(raw, 800);
+  pendingPolyline = polyline.length > 1 ? polyline : null;
+
+  // Try to match GPS track against known trails
+  const match = findNearbyMatch(polyline);
+  pendingNearbyId = match ? match.trail.id : null;
+
+  const nameFromFile = filename.replace(/\.fit$/i, '').replace(/[-_]/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase()).trim();
+  const name  = match ? match.trail.name  : nameFromFile;
+  const state = match ? match.trail.state : '';
+
+  const queueInfo = total > 1 ? ` (${current} of ${total})` : '';
+  openModal(null, { name, state, miles, date, hasFitGps: !!pendingPolyline, pointCount: polyline.length, queueInfo, match });
+
+  if (pendingPolyline) {
+    if (previewLayer) { previewLayer.remove(); previewLayer = null; }
+    previewLayer = L.polyline(pendingPolyline, { color: '#2d7a3a', weight: 4, opacity: 0.55, dashArray: '6 4' }).addTo(map);
+    map.fitBounds(previewLayer.getBounds(), { padding: [40, 40], maxZoom: 14 });
+  }
+}
+
+function downsample(pts, max) {
+  if (pts.length <= max) return pts;
+  const step = pts.length / max;
+  return Array.from({ length: max }, (_, i) => pts[Math.round(i * step)]);
+}
+
+// Drag and drop
+document.addEventListener('dragover', e => {
+  if ([...e.dataTransfer.items].some(i=>i.kind==='file')) {
+    e.preventDefault();
+    document.getElementById('drop-overlay').classList.add('active');
+  }
+});
+document.addEventListener('dragleave', e => {
+  if (!e.relatedTarget) document.getElementById('drop-overlay').classList.remove('active');
+});
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  document.getElementById('drop-overlay').classList.remove('active');
+  const files = [...e.dataTransfer.files].filter(f => f.name.toLowerCase().endsWith('.fit'));
+  if (!files.length) return;
+  fitQueue = files;
+  fitBatchTotal = files.length;
+  processNextFit();
+});
+
+// ─── Modal ────────────────────────────────────────────────────────────────────
+function openModal(id = null, prefill = null) {
+  editingId = id;
+  const banner      = document.getElementById('import-banner');
+  const bannerText  = document.getElementById('import-banner-text');
+  const matchBanner = document.getElementById('match-banner');
+  const matchText   = document.getElementById('match-banner-text');
+  const fitNote     = document.getElementById('fit-location-note');
+  const locGroup    = document.getElementById('location-group');
+
+  document.getElementById('modal-title').textContent =
+    prefill?.fromNearby ? `Log Ride — ${prefill.name}` :
+    prefill ? `📥 Import FIT${prefill.queueInfo || ''}` :
+    id ? 'Edit Ride' : 'Log a Ride';
+
+  banner.classList.remove('visible');
+  matchBanner.classList.remove('visible');
+  fitNote.style.display = 'none';
+  locGroup.style.display = 'block';
+
+  if (prefill) {
+    document.getElementById('f-name').value = prefill.name || '';
+    document.getElementById('f-state').value = prefill.state || '';
+    document.getElementById('f-miles').value = prefill.miles || '';
+    document.getElementById('f-date').value = prefill.date || '';
+    document.getElementById('f-lat').value = '';
+    document.getElementById('f-lng').value = '';
+
+    if (prefill.match) {
+      matchText.innerHTML = `Matched to <strong>${prefill.match.trail.name}</strong> · ${prefill.match.distMi.toFixed(1)} mi from route center`;
+      matchBanner.classList.add('visible');
+    }
+
+    if (prefill.hasFitGps) {
+      bannerText.innerHTML = `GPS route imported — <strong>${prefill.pointCount} points</strong> will be drawn on the map.`;
+      banner.classList.add('visible');
+      locGroup.style.display = 'none';
+      fitNote.style.display = 'block';
+    }
+  } else if (id) {
+    const t = trails.find(x=>x.id===id);
+    document.getElementById('f-name').value = t.name || '';
+    document.getElementById('f-state').value = t.state || '';
+    document.getElementById('f-miles').value = t.miles || '';
+    document.getElementById('f-date').value = t.date || '';
+    document.getElementById('f-lat').value = t.lat || '';
+    document.getElementById('f-lng').value = t.lng || '';
+  } else {
+    ['f-name','f-state','f-miles','f-date','f-lat','f-lng'].forEach(id => document.getElementById(id).value = '');
+  }
+
+  document.getElementById('modal-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('f-name').focus(), 50);
+}
+
+function openModalFromNearby(nearbyId) {
+  const n = NEARBY_TRAILS.find(x=>x.id===nearbyId);
+  if (!n) return;
+  pendingNearbyId = nearbyId;
+  pendingPolyline = null;
+  openModal(null, { name: n.name, state: n.state, miles: n.miles, date: '', fromNearby: true });
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  editingId = null;
+  pendingPolyline = null;
+  pendingNearbyId = null;
+  if (previewLayer) { previewLayer.remove(); previewLayer = null; }
+  // Advance to next file in a multi-file import batch
+  if (fitQueue.length) setTimeout(processNextFit, 150);
+}
+
+function closeModalOnOverlay(e) {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+}
+
+function saveTrail() {
+  const name = document.getElementById('f-name').value.trim();
+  if (!name) { document.getElementById('f-name').focus(); return; }
+
+  const trail = {
+    id: editingId || genId(),
+    name,
+    state: document.getElementById('f-state').value.trim().toUpperCase(),
+    miles: document.getElementById('f-miles').value || '',
+    date: document.getElementById('f-date').value || '',
+    lat: parseFloat(document.getElementById('f-lat').value) || null,
+    lng: parseFloat(document.getElementById('f-lng').value) || null,
+    polyline: pendingPolyline || (editingId ? trails.find(t=>t.id===editingId)?.polyline : null) || null,
+    nearbyId: pendingNearbyId || (editingId ? trails.find(t=>t.id===editingId)?.nearbyId : null) || null,
+  };
+
+  const wasNearby = !!pendingNearbyId;
+  pendingPolyline = null;
+  pendingNearbyId = null;
+  if (previewLayer) { previewLayer.remove(); previewLayer = null; }
+
+  if (editingId) {
+    trails[trails.findIndex(t=>t.id===editingId)] = trail;
+  } else {
+    trails.push(trail);
+  }
+
+  persistTrails();  // fire-and-forget; UI updates immediately
+  render();
+  closeModal();
+  switchTab('rides');
+  setTimeout(() => focusRidden(trail.id), 200);
+}
+
+async function deleteTrail(id) {
+  if (!confirm('Remove this ride?')) return;
+  removeLayer(mapLayers, id);
+  trails = trails.filter(t=>t.id!==id);
+  await persistTrails();
+  render();
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.getElementById('tab-rides').classList.toggle('active', name==='rides');
+  document.getElementById('tab-nearby').classList.toggle('active', name==='nearby');
+  document.getElementById('panel-rides').classList.toggle('active', name==='rides');
+  document.getElementById('panel-nearby').classList.toggle('active', name==='nearby');
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  const [y,m,d] = iso.split('-');
+  return new Date(+y,+m-1,+d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+(async () => {
+  trails = await loadTrails();
+  // Migrate any old data that had status='wishlist'
+  trails = trails.filter(t => !t.status || t.status === 'ridden');
+  trails.forEach(t => { delete t.status; });
+  render();
+})();
+</script>
+</body>
+</html>
