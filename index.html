@@ -409,6 +409,68 @@
     }
     .match-banner.visible { display: flex; }
 
+    /* Duplicate FIT warning */
+    .dup-warning {
+      display: none;
+      background: #fffbeb;
+      border: 1px solid #f0c84e;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 16px;
+      font-size: 0.83rem;
+    }
+    .dup-warning.visible { display: block; }
+    .dup-warning-title { font-weight: 700; color: #7c5a00; margin-bottom: 5px; }
+    .dup-warning-msg { color: #5a4200; margin-bottom: 10px; line-height: 1.45; }
+    .dup-warning-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+    .dup-btn-update {
+      padding: 5px 12px; border: none; border-radius: 6px; font-size: 0.8rem;
+      font-weight: 600; cursor: pointer; background: var(--green); color: white;
+    }
+    .dup-btn-update:hover { background: #225e2c; }
+    .dup-btn-new {
+      padding: 5px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.8rem;
+      font-weight: 600; cursor: pointer; background: none; color: var(--muted);
+    }
+    .dup-btn-new:hover { background: var(--bg); color: var(--text); }
+
+    /* Multi-candidate match picker */
+    .match-picker {
+      display: none;
+      background: #e8f0fe;
+      border: 1px solid #adc6f7;
+      border-radius: 8px;
+      padding: 11px 13px;
+      margin-bottom: 16px;
+    }
+    .match-picker.visible { display: block; }
+    .match-picker-label { font-size: 0.8rem; font-weight: 700; color: #1a56db; margin-bottom: 8px; }
+    .match-option {
+      display: flex; align-items: baseline; gap: 7px; padding: 3px 0;
+      cursor: pointer; color: #1a3a6b; font-size: 0.83rem;
+    }
+    .match-option input[type="radio"] { margin: 0; flex-shrink: 0; cursor: pointer; }
+    .match-dist { font-size: 0.73rem; color: #4a72b8; margin-left: 3px; }
+
+    /* No-match banner + search links */
+    .no-match-banner {
+      display: none;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 13px;
+      margin-bottom: 16px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .no-match-banner.visible { display: block; }
+    .no-match-links { margin-top: 8px; display: flex; gap: 7px; flex-wrap: wrap; }
+    .no-match-link {
+      padding: 3px 10px; border: 1px solid var(--border); border-radius: 5px;
+      font-size: 0.76rem; color: var(--blue); text-decoration: none; background: white;
+    }
+    .no-match-link:hover { border-color: var(--blue); }
+
     .form-group { margin-bottom: 14px; }
 
     label {
@@ -568,10 +630,30 @@
   <div class="modal">
     <h2 id="modal-title">Log a Ride</h2>
 
+    <div class="dup-warning" id="dup-warning">
+      <div class="dup-warning-title">⚠️ Already imported</div>
+      <div class="dup-warning-msg" id="dup-warning-msg"></div>
+      <div class="dup-warning-btns">
+        <button class="dup-btn-update" id="dup-btn-update">Update existing ride</button>
+        <button class="dup-btn-new" onclick="dismissDupWarning()">Log on a different trail</button>
+      </div>
+    </div>
+
     <div class="match-banner" id="match-banner">
       <span>🗺️</span>
       <div id="match-banner-text"></div>
     </div>
+
+    <div class="match-picker" id="match-picker">
+      <div class="match-picker-label">🗺️ Select the trail this ride matches:</div>
+      <div id="match-picker-options"></div>
+    </div>
+
+    <div class="no-match-banner" id="no-match-banner">
+      <div>🔍 <strong>No nearby trail matched this GPS route.</strong> Search for rail trails near this location:</div>
+      <div class="no-match-links" id="no-match-links"></div>
+    </div>
+
     <div class="import-banner" id="import-banner">
       <span>✅</span>
       <div id="import-banner-text"></div>
@@ -713,6 +795,7 @@ async function persistTrails() {
 let editingId = null;
 let pendingPolyline = null;
 let pendingNearbyId = null;
+let pendingFitFingerprint = null;
 
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -1075,7 +1158,8 @@ function readDataMsg(def, pos, view, FIT_EPOCH_MS, SEMI_TO_DEG, sessions, record
 }
 
 // ─── Trail matching ───────────────────────────────────────────────────────────
-const MATCH_THRESHOLD_MI = 5; // max distance from track centroid to trail marker
+const MATCH_THRESHOLD_MI = 5;   // max distance to consider a candidate match
+const MATCH_AUTO_MI     = 2;    // below this → auto-accept without asking
 
 function haversineMi(lat1, lng1, lat2, lng2) {
   const R = 3958.8;
@@ -1094,15 +1178,26 @@ function trackCentroid(pts) {
   ];
 }
 
-function findNearbyMatch(polyline) {
-  if (polyline.length < 2) return null;
+// Returns all nearby candidates sorted by distance (closest first)
+function findAllNearbyMatches(polyline) {
+  if (!polyline || polyline.length < 2) return [];
   const [cLat, cLng] = trackCentroid(polyline);
-  let best = null, bestDist = MATCH_THRESHOLD_MI;
-  for (const t of NEARBY_TRAILS) {
-    const d = haversineMi(cLat, cLng, t.lat, t.lng);
-    if (d < bestDist) { bestDist = d; best = { trail: t, distMi: d }; }
+  return NEARBY_TRAILS
+    .map(t => ({ trail: t, distMi: parseFloat(haversineMi(cLat, cLng, t.lat, t.lng).toFixed(2)) }))
+    .filter(c => c.distMi < MATCH_THRESHOLD_MI)
+    .sort((a, b) => a.distMi - b.distMi);
+}
+
+// Fingerprint a FIT file using its date, distance, and first/last GPS point.
+// Used to detect re-imports of the same activity.
+function makeFitFingerprint(date, miles, polyline) {
+  const pts = polyline || [];
+  let fp = `${date}|${miles}`;
+  if (pts.length >= 2) {
+    fp += `|${pts[0][0].toFixed(4)},${pts[0][1].toFixed(4)}`;
+    fp += `|${pts[pts.length-1][0].toFixed(4)},${pts[pts.length-1][1].toFixed(4)}`;
   }
-  return best;
+  return fp;
 }
 
 // ─── FIT Import ───────────────────────────────────────────────────────────────
@@ -1165,17 +1260,30 @@ function parseFit(buffer, filename, current = 0, total = 0) {
   const polyline = downsample(raw, 800);
   pendingPolyline = polyline.length > 1 ? polyline : null;
 
-  // Try to match GPS track against known trails
-  const match = findNearbyMatch(polyline);
-  pendingNearbyId = match ? match.trail.id : null;
+  // Build fingerprint and check for a previous import of this same FIT
+  const fp = makeFitFingerprint(date, miles, pendingPolyline);
+  const dupTrail = trails.find(t => t.fitFingerprint && t.fitFingerprint === fp) || null;
+
+  // Find all candidate nearby trail matches (sorted closest-first)
+  const candidates = findAllNearbyMatches(pendingPolyline || []);
+  const bestMatch = candidates[0] || null;
+  pendingNearbyId = bestMatch?.trail?.id || null;
 
   const nameFromFile = filename.replace(/\.fit$/i, '').replace(/[-_]/g, ' ')
     .replace(/\b\w/g, c => c.toUpperCase()).trim();
-  const name  = match ? match.trail.name  : nameFromFile;
-  const state = match ? match.trail.state : '';
+  const name  = bestMatch ? bestMatch.trail.name  : nameFromFile;
+  const state = bestMatch ? bestMatch.trail.state : '';
 
   const queueInfo = total > 1 ? ` (${current} of ${total})` : '';
-  openModal(null, { name, state, miles, date, hasFitGps: !!pendingPolyline, pointCount: polyline.length, queueInfo, match });
+  openModal(null, {
+    name, state, miles, date,
+    hasFitGps: !!pendingPolyline,
+    pointCount: polyline.length,
+    queueInfo,
+    candidates,
+    dupTrail,
+    fitFingerprint: fp,
+  });
 
   if (pendingPolyline) {
     if (previewLayer) { previewLayer.remove(); previewLayer = null; }
@@ -1288,16 +1396,27 @@ function openModal(id = null, prefill = null) {
   const matchText   = document.getElementById('match-banner-text');
   const fitNote     = document.getElementById('fit-location-note');
   const locGroup    = document.getElementById('location-group');
+  const dupWarn     = document.getElementById('dup-warning');
+  const matchPicker = document.getElementById('match-picker');
+  const noMatchEl   = document.getElementById('no-match-banner');
 
   document.getElementById('modal-title').textContent =
     prefill?.fromNearby ? `Log Ride — ${prefill.name}` :
     prefill ? `📥 Import FIT${prefill.queueInfo || ''}` :
     id ? 'Edit Ride' : 'Log a Ride';
 
+  // Reset all banners
   banner.classList.remove('visible');
   matchBanner.classList.remove('visible');
+  dupWarn.classList.remove('visible');
+  matchPicker.classList.remove('visible');
+  noMatchEl.classList.remove('visible');
   fitNote.style.display = 'none';
   locGroup.style.display = 'block';
+
+  // Store fingerprint for saving later
+  pendingFitFingerprint = prefill?.fitFingerprint || null;
+
   // Show FIT upload zone for new rides only (not editing, not already a FIT import)
   const fitSection = document.getElementById('modal-fit-section');
   fitSection.style.display = (!id && !prefill?.hasFitGps) ? 'block' : 'none';
@@ -1310,17 +1429,65 @@ function openModal(id = null, prefill = null) {
     document.getElementById('f-lat').value = '';
     document.getElementById('f-lng').value = '';
 
-    if (prefill.match) {
-      matchText.innerHTML = `Matched to <strong>${prefill.match.trail.name}</strong> · ${prefill.match.distMi.toFixed(1)} mi from route center`;
-      matchBanner.classList.add('visible');
+    // ── Duplicate FIT warning ────────────────────────────────────────────────
+    if (prefill.dupTrail) {
+      const d = prefill.dupTrail;
+      document.getElementById('dup-warning-msg').innerHTML =
+        `This FIT was previously imported as <strong>${escHtml(d.name)}</strong>` +
+        (d.date ? ` on ${fmtDate(d.date)}` : '') +
+        `. You can update that ride, or log this route on a different trail.`;
+      document.getElementById('dup-btn-update').onclick = () => updateExistingFromFit(d.id);
+      dupWarn.classList.add('visible');
     }
 
+    // ── GPS route banner ─────────────────────────────────────────────────────
     if (prefill.hasFitGps) {
       bannerText.innerHTML = `GPS route imported — <strong>${prefill.pointCount} points</strong> will be drawn on the map.`;
       banner.classList.add('visible');
       locGroup.style.display = 'none';
       fitNote.style.display = 'block';
     }
+
+    // ── Match candidates (only for FIT imports, not when editing or fromNearby) ──
+    if (prefill.candidates && !prefill.fromNearby && !id) {
+      const cands = prefill.candidates;
+      const [cLat, cLng] = pendingPolyline ? trackCentroid(pendingPolyline) : [42.46, -71.35];
+
+      if (cands.length === 0) {
+        // No match at all → show search links
+        const trailLinkUrl = `https://www.traillink.com/trailsearch/?lat=${cLat.toFixed(4)}&lng=${cLng.toFixed(4)}`;
+        const mapsUrl = `https://www.google.com/maps/search/rail+trail/@${cLat.toFixed(4)},${cLng.toFixed(4)},13z`;
+        const rwgpsUrl = `https://ridewithgps.com/routes/new?lat=${cLat.toFixed(4)}&lng=${cLng.toFixed(4)}`;
+        document.getElementById('no-match-links').innerHTML =
+          `<a class="no-match-link" href="${trailLinkUrl}" target="_blank" rel="noopener">🔗 TrailLink</a>` +
+          `<a class="no-match-link" href="${mapsUrl}" target="_blank" rel="noopener">🗺️ Google Maps</a>` +
+          `<a class="no-match-link" href="${rwgpsUrl}" target="_blank" rel="noopener">🚴 RideWithGPS</a>`;
+        noMatchEl.classList.add('visible');
+
+      } else if (cands.length === 1 && cands[0].distMi < MATCH_AUTO_MI) {
+        // Single tight match → auto-accept, show info banner
+        const m = cands[0];
+        matchText.innerHTML = `🗺️ Matched to <strong>${escHtml(m.trail.name)}</strong> · ${m.distMi.toFixed(1)} mi from route center`;
+        matchBanner.classList.add('visible');
+
+      } else {
+        // Ambiguous (loose match or multiple candidates) → show picker
+        const optionsHtml = cands.map((c, i) => `
+          <label class="match-option">
+            <input type="radio" name="trail-match" value="${escHtml(c.trail.id)}"
+              ${i === 0 ? 'checked' : ''}
+              onchange="onMatchPick('${c.trail.id}','${escHtml(c.trail.name).replace(/'/g,"\\'")}','${escHtml(c.trail.state).replace(/'/g,"\\'")}')">
+            ${escHtml(c.trail.name)}<span class="match-dist">${c.distMi.toFixed(1)} mi from route center</span>
+          </label>`).join('');
+        document.getElementById('match-picker-options').innerHTML = optionsHtml + `
+          <label class="match-option">
+            <input type="radio" name="trail-match" value="" onchange="onMatchPick('','','')">
+            None of these — save as custom ride
+          </label>`;
+        matchPicker.classList.add('visible');
+      }
+    }
+
   } else if (id) {
     const t = trails.find(x=>x.id===id);
     document.getElementById('f-name').value = t.name || '';
@@ -1345,11 +1512,50 @@ function openModalFromNearby(nearbyId) {
   openModal(null, { name: n.name, state: n.state, miles: n.miles, date: '', fromNearby: true });
 }
 
+// Called when user picks a different trail from the match-picker radio buttons
+function onMatchPick(id, name, state) {
+  pendingNearbyId = id || null;
+  if (name) {
+    document.getElementById('f-name').value = name;
+    document.getElementById('f-state').value = state;
+  }
+}
+
+// Dismiss dup warning and allow logging on a different trail
+function dismissDupWarning() {
+  document.getElementById('dup-warning').classList.remove('visible');
+  // Clear fingerprint so the new ride won't collide with the old one
+  pendingFitFingerprint = null;
+  // Also clear the pre-selected nearbyId so the match picker takes over
+  // (user may want to pick a different trail)
+}
+
+// Switch the open modal into "update existing ride" mode using already-pending FIT data
+function updateExistingFromFit(trailId) {
+  const t = trails.find(x => x.id === trailId);
+  if (!t) return;
+  editingId = trailId;
+  document.getElementById('dup-warning').classList.remove('visible');
+  document.getElementById('match-picker').classList.remove('visible');
+  document.getElementById('no-match-banner').classList.remove('visible');
+  document.getElementById('modal-title').textContent = `Edit Ride — ${t.name}`;
+  // Keep existing name/state, update miles+date from FIT
+  document.getElementById('f-name').value = t.name;
+  document.getElementById('f-state').value = t.state || '';
+  // miles and date were already filled from FIT in openModal — keep them
+  document.getElementById('f-lat').value = '';
+  document.getElementById('f-lng').value = '';
+  document.getElementById('modal-fit-section').style.display = 'none';
+  pendingNearbyId = t.nearbyId || null;
+  // pendingPolyline and pendingFitFingerprint stay set from parseFit()
+}
+
 function closeModal() {
   document.getElementById('modal-overlay').classList.remove('open');
   editingId = null;
   pendingPolyline = null;
   pendingNearbyId = null;
+  pendingFitFingerprint = null;
   if (previewLayer) { previewLayer.remove(); previewLayer = null; }
   // Advance to next file in a multi-file import batch
   if (fitQueue.length) setTimeout(processNextFit, 150);
@@ -1363,6 +1569,7 @@ function saveTrail() {
   const name = document.getElementById('f-name').value.trim();
   if (!name) { document.getElementById('f-name').focus(); return; }
 
+  const existing = editingId ? trails.find(t=>t.id===editingId) : null;
   const trail = {
     id: editingId || genId(),
     name,
@@ -1371,13 +1578,14 @@ function saveTrail() {
     date: document.getElementById('f-date').value || '',
     lat: parseFloat(document.getElementById('f-lat').value) || null,
     lng: parseFloat(document.getElementById('f-lng').value) || null,
-    polyline: pendingPolyline || (editingId ? trails.find(t=>t.id===editingId)?.polyline : null) || null,
-    nearbyId: pendingNearbyId || (editingId ? trails.find(t=>t.id===editingId)?.nearbyId : null) || null,
+    polyline: pendingPolyline || existing?.polyline || null,
+    nearbyId: pendingNearbyId || existing?.nearbyId || null,
+    fitFingerprint: pendingFitFingerprint || existing?.fitFingerprint || null,
   };
 
-  const wasNearby = !!pendingNearbyId;
   pendingPolyline = null;
   pendingNearbyId = null;
+  pendingFitFingerprint = null;
   if (previewLayer) { previewLayer.remove(); previewLayer = null; }
 
   if (editingId) {
