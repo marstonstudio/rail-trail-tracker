@@ -588,7 +588,7 @@
 <div class="drop-overlay" id="drop-overlay">📂 Drop FIT files to import</div>
 
 <header>
-  <h1><span id="build-badge" style="cursor:default">🚴</span> Rail Trail Tracker</h1>
+  <h1><span id="build-badge" style="position:relative;cursor:default">🚴<span id="build-tooltip" style="display:none;position:absolute;top:1.6em;left:0;background:#1e2327;color:#fff;font-size:0.72rem;font-weight:400;padding:5px 9px;border-radius:6px;white-space:nowrap;pointer-events:none;z-index:999;box-shadow:0 2px 8px rgba(0,0,0,.25)"></span></span> Rail Trail Tracker</h1>
   <div class="stats">
     <div><span class="stat-val" id="stat-ridden">0</span> rides logged</div>
     <div><span class="stat-val" id="stat-miles">0</span> mi ridden</div>
@@ -712,24 +712,25 @@
 (function() {
   const sha  = document.querySelector('meta[name="build-sha"]')?.content  || '';
   const date = document.querySelector('meta[name="build-date"]')?.content || '';
-  const badge = document.getElementById('build-badge');
-  if (!badge) return;
-  // Placeholders haven't been replaced → local dev build
-  if (!sha || sha === '__BUILD_SHA__') {
-    badge.title = 'Local dev build';
-    return;
+  const badge   = document.getElementById('build-badge');
+  const tooltip = document.getElementById('build-tooltip');
+  if (!badge || !tooltip) return;
+  let label = 'Local dev build';
+  if (sha && sha !== '__BUILD_SHA__') {
+    label = `Build ${sha.slice(0, 7)}`;
+    if (date) {
+      try {
+        const d = new Date(date);
+        label += ' · ' + d.toLocaleDateString('en-US', {
+          month: 'short', day: 'numeric', year: 'numeric',
+          hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+        });
+      } catch {}
+    }
   }
-  let label = `Build ${sha.slice(0, 7)}`;
-  if (date) {
-    try {
-      const d = new Date(date);
-      label += ' · ' + d.toLocaleDateString('en-US', {
-        month: 'short', day: 'numeric', year: 'numeric',
-        hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
-      });
-    } catch {}
-  }
-  badge.title = label;
+  tooltip.textContent = label;
+  badge.addEventListener('mouseenter', () => tooltip.style.display = 'block');
+  badge.addEventListener('mouseleave', () => tooltip.style.display = 'none');
 })();
 
 // ─── Nearby trail data (researched, within 100 mi of Concord MA) ──────────────
@@ -1184,8 +1185,132 @@ function readDataMsg(def, pos, view, FIT_EPOCH_MS, SEMI_TO_DEG, sessions, record
 }
 
 // ─── Trail matching ───────────────────────────────────────────────────────────
-const MATCH_THRESHOLD_MI = 5;   // max distance to consider a candidate match
-const MATCH_AUTO_MI     = 2;    // below this → auto-accept without asking
+// Centroid fallback thresholds (used when no polyline data is available)
+const MATCH_THRESHOLD_MI  = 5;    // max centroid→trail-ref distance for a candidate
+const MATCH_AUTO_MI       = 2;    // centroid auto-accept threshold
+
+// Overlap-based thresholds (used when polylines are available)
+const MATCH_RADIUS_M      = 150;  // FIT point counts as "on trail" if within this many metres
+const AUTO_MATCH_SCORE    = 0.35; // ≥35% overlap → auto-accept (clear winner)
+const CANDIDATE_MIN_SCORE = 0.05; // ≥5% overlap → show as candidate in picker
+const DISCOVER_MIN_SCORE  = 0.20; // ≥20% overlap → surface as a discovered trail suggestion
+
+// Polyline cache: { [nearbyTrailId]: [[lat,lng],...] }  populated on-demand via Overpass.
+let TRAIL_POLYLINES = null;
+// OSM trails found near the current FIT track that aren't in NEARBY_TRAILS.
+let pendingDiscovered = [];
+// Set of quantised bbox keys we've already queried this session (avoid re-fetching).
+const fetchedBboxKeys = new Set();
+
+const OVERPASS_URL        = 'https://overpass-api.de/api/interpreter';
+const OVERPASS_TIMEOUT_MS = 5000;
+const MAX_CACHED_PTS      = 300;
+
+// Stop-words excluded when comparing trail names.
+const NAME_STOP = new Set(['rail','trail','bikeway','greenway','path','the','and','of','in',
+                            'to','a','an','state','park','river','creek','lake','pond',
+                            'road','street','recreational','heritage','community','linear']);
+
+function nameMatchScore(osmName, trailName) {
+  const osmWords = new Set(osmName.toLowerCase().split(/\W+/).filter(w => w.length > 2 && !NAME_STOP.has(w)));
+  const keys     = trailName.toLowerCase().split(/\W+/).filter(w => w.length > 2 && !NAME_STOP.has(w));
+  if (!keys.length) return 0;
+  return keys.filter(w => osmWords.has(w)).length / keys.length;
+}
+
+/**
+ * Query Overpass for all named bicycle/foot paths within the FIT track's bounding box.
+ * - Ways matching a NEARBY_TRAIL name → stored in TRAIL_POLYLINES for overlap scoring.
+ * - Everything else → stored in pendingDiscovered for the "unknown trail" suggestion UI.
+ * Results are cached by bbox so the same area isn't queried twice per session.
+ */
+async function fetchPolylinesNearTrack(polyline) {
+  if (!polyline || polyline.length < 2) return;
+  pendingDiscovered = [];
+
+  // Compute a quantised bbox (0.1° grid) so nearby re-imports reuse cached results.
+  const lats = polyline.map(p => p[0]);
+  const lngs = polyline.map(p => p[1]);
+  const BUF = 0.12; // ~8 mi buffer on each side
+  const s = (Math.floor((Math.min(...lats) - BUF) * 10) / 10).toFixed(1);
+  const n = (Math.ceil ((Math.max(...lats) + BUF) * 10) / 10).toFixed(1);
+  const w = (Math.floor((Math.min(...lngs) - BUF) * 10) / 10).toFixed(1);
+  const e = (Math.ceil ((Math.max(...lngs) + BUF) * 10) / 10).toFixed(1);
+  const bboxKey = `${s},${w},${n},${e}`;
+
+  if (fetchedBboxKeys.has(bboxKey)) return; // already fetched this area this session
+  fetchedBboxKeys.add(bboxKey);
+
+  const query = `[out:json][timeout:18];
+way["name"]["highway"~"path|cycleway|track|footway|bridleway"](${s},${w},${n},${e});
+out geom qt;`;
+
+  const ctrl  = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), OVERPASS_TIMEOUT_MS);
+  try {
+    const resp = await fetch(OVERPASS_URL, {
+      method: 'POST', signal: ctrl.signal,
+      body: 'data=' + encodeURIComponent(query),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
+    clearTimeout(timer);
+    if (!resp.ok) return;
+    const json = await resp.json();
+
+    if (!TRAIL_POLYLINES) TRAIL_POLYLINES = {};
+
+    // Accumulate geometry per matched NEARBY_TRAIL id, or as a discovered trail.
+    const accum    = {};   // nearbyTrailId → [[lat,lng]]
+    const unknown  = {};   // osmName → { pts, osmName }
+
+    for (const el of (json.elements || [])) {
+      if (!el.geometry || !el.tags?.name) continue;
+      const osmName = el.tags.name;
+      const pts     = el.geometry.map(g => [g.lat, g.lon]);
+
+      // Try to match to a known NEARBY_TRAIL
+      let bestId = null, bestScore = 0.5; // threshold: at least 50% keyword overlap
+      for (const t of NEARBY_TRAILS) {
+        const s = nameMatchScore(osmName, t.name);
+        if (s > bestScore) { bestScore = s; bestId = t.id; }
+      }
+
+      if (bestId) {
+        if (!accum[bestId]) accum[bestId] = [];
+        accum[bestId].push(...pts);
+      } else {
+        // Unknown trail — accumulate for discovery
+        const key = osmName.toLowerCase();
+        if (!unknown[key]) unknown[key] = { osmName, pts: [] };
+        unknown[key].pts.push(...pts);
+      }
+    }
+
+    // Downsample and store known-trail polylines
+    for (const [id, pts] of Object.entries(accum)) {
+      if (pts.length < 4) continue;
+      const step = Math.max(1, Math.ceil(pts.length / MAX_CACHED_PTS));
+      TRAIL_POLYLINES[id] = pts.filter((_, i) => i % step === 0);
+    }
+
+    // Score unknown trails against the FIT track and surface the best ones
+    for (const { osmName, pts } of Object.values(unknown)) {
+      if (pts.length < 4) continue;
+      const step = Math.max(1, Math.ceil(pts.length / MAX_CACHED_PTS));
+      const trailPts = pts.filter((_, i) => i % step === 0);
+      const score = overlapScore(polyline, trailPts);
+      if (score !== null && score >= DISCOVER_MIN_SCORE) {
+        pendingDiscovered.push({ osmName, pts: trailPts, score });
+      }
+    }
+    // Sort discovered trails best-first
+    pendingDiscovered.sort((a, b) => b.score - a.score);
+
+  } catch (e) {
+    clearTimeout(timer);
+    if (e.name !== 'AbortError') console.debug('Overpass unavailable, using centroid matching');
+  }
+}
 
 function haversineMi(lat1, lng1, lat2, lng2) {
   const R = 3958.8;
@@ -1196,6 +1321,10 @@ function haversineMi(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function haversineM(lat1, lng1, lat2, lng2) {
+  return haversineMi(lat1, lng1, lat2, lng2) * 1609.34;
+}
+
 function trackCentroid(pts) {
   const n = pts.length;
   return [
@@ -1204,14 +1333,82 @@ function trackCentroid(pts) {
   ];
 }
 
-// Returns all nearby candidates sorted by distance (closest first)
+/**
+ * Compute what fraction of (sampled) FIT track points lie within MATCH_RADIUS_M
+ * of any point on the stored trail polyline.
+ * Returns 0–1, or null if trailPts is missing / only a single reference point.
+ */
+function overlapScore(fitPts, trailPts) {
+  if (!trailPts || trailPts.length < 2) return null; // not enough data → centroid fallback
+  // Sample at most ~300 FIT points to keep the inner loop fast
+  const step   = Math.max(1, Math.floor(fitPts.length / 300));
+  const sample = fitPts.filter((_, i) => i % step === 0);
+  if (!sample.length) return null;
+  let hits = 0;
+  for (const fp of sample) {
+    for (const tp of trailPts) {
+      if (haversineM(fp[0], fp[1], tp[0], tp[1]) < MATCH_RADIUS_M) { hits++; break; }
+    }
+  }
+  return hits / sample.length;
+}
+
+/**
+ * Returns all candidate trail matches for a FIT polyline, sorted best-first.
+ * Each candidate: { trail, score, distMi, matchLabel }
+ *   score    – overlap fraction 0-1 (null if centroid-only)
+ *   distMi   – centroid→trail-ref distance (always present, used as fallback)
+ *   matchLabel – human-readable string for the picker ("62% overlap" or "1.2 mi away")
+ */
 function findAllNearbyMatches(polyline) {
   if (!polyline || polyline.length < 2) return [];
   const [cLat, cLng] = trackCentroid(polyline);
-  return NEARBY_TRAILS
-    .map(t => ({ trail: t, distMi: parseFloat(haversineMi(cLat, cLng, t.lat, t.lng).toFixed(2)) }))
-    .filter(c => c.distMi < MATCH_THRESHOLD_MI)
-    .sort((a, b) => a.distMi - b.distMi);
+
+  const candidates = NEARBY_TRAILS.map(t => {
+    const distMi    = parseFloat(haversineMi(cLat, cLng, t.lat, t.lng).toFixed(2));
+    const trailPts  = TRAIL_POLYLINES?.[t.id];
+    const score     = overlapScore(polyline, trailPts);
+    const matchLabel = score !== null
+      ? `${Math.round(score * 100)}% overlap`
+      : `${distMi.toFixed(1)} mi from route center`;
+    return { trail: t, score, distMi, matchLabel };
+  });
+
+  if (TRAIL_POLYLINES) {
+    // Overlap mode: filter by score (or fall back to centroid for single-pt entries)
+    return candidates
+      .filter(c => c.score !== null ? c.score >= CANDIDATE_MIN_SCORE : c.distMi < MATCH_THRESHOLD_MI)
+      .sort((a, b) => {
+        // Sort: scored trails by score desc, then unscored by distance
+        const sa = a.score ?? -1, sb = b.score ?? -1;
+        return sb - sa || a.distMi - b.distMi;
+      });
+  } else {
+    // Centroid-only mode (polylines not yet loaded)
+    return candidates
+      .filter(c => c.distMi < MATCH_THRESHOLD_MI)
+      .sort((a, b) => a.distMi - b.distMi);
+  }
+}
+
+/**
+ * Returns true if the top candidate is a clear auto-accept match.
+ * Overlap mode: top score ≥ AUTO_MATCH_SCORE AND well ahead of runner-up.
+ * Centroid fallback: single candidate within MATCH_AUTO_MI.
+ */
+function isAutoMatch(cands) {
+  if (!cands.length) return false;
+  const top = cands[0];
+  if (top.score !== null) {
+    // Overlap mode: strong enough AND either only candidate or well ahead of #2
+    if (top.score < AUTO_MATCH_SCORE) return false;
+    if (cands.length === 1) return true;
+    const runnerUp = cands[1].score ?? 0;
+    return (top.score - runnerUp) >= 0.15; // clear winner by 15 pp
+  } else {
+    // Centroid fallback
+    return cands.length === 1 && top.distMi < MATCH_AUTO_MI;
+  }
 }
 
 // Fingerprint a FIT file using its date, distance, and first/last GPS point.
@@ -1251,7 +1448,7 @@ function readFitFile(file, current = 0, total = 0) {
   reader.readAsArrayBuffer(file);
 }
 
-function parseFit(buffer, filename, current = 0, total = 0) {
+async function parseFit(buffer, filename, current = 0, total = 0) {
   let data;
   try {
     data = parseFitBuffer(buffer);
@@ -1290,7 +1487,11 @@ function parseFit(buffer, filename, current = 0, total = 0) {
   const fp = makeFitFingerprint(date, miles, pendingPolyline);
   const dupTrail = trails.find(t => t.fitFingerprint && t.fitFingerprint === fp) || null;
 
-  // Find all candidate nearby trail matches (sorted closest-first)
+  // Fetch trail polylines from Overpass (and discover unknown trails near this track).
+  // Silently falls back to centroid matching if Overpass is unavailable.
+  if (pendingPolyline) await fetchPolylinesNearTrack(pendingPolyline);
+
+  // Find all candidate nearby trail matches (sorted best-first)
   const candidates = findAllNearbyMatches(pendingPolyline || []);
   const bestMatch = candidates[0] || null;
   pendingNearbyId = bestMatch?.trail?.id || null;
@@ -1308,6 +1509,7 @@ function parseFit(buffer, filename, current = 0, total = 0) {
     queueInfo,
     filename,
     candidates,
+    discovered: pendingDiscovered,
     dupTrail,
     fitFingerprint: fp,
   });
@@ -1484,20 +1686,41 @@ function openModal(id = null, prefill = null) {
       const [cLat, cLng] = pendingPolyline ? trackCentroid(pendingPolyline) : [42.46, -71.35];
 
       if (cands.length === 0) {
-        // No match at all → show search links
+        // No match → show discovered OSM trails (if any) + generic search links
+        const disc = prefill.discovered || [];
         const trailLinkUrl = `https://www.traillink.com/trailsearch/?lat=${cLat.toFixed(4)}&lng=${cLng.toFixed(4)}`;
-        const mapsUrl = `https://www.google.com/maps/search/rail+trail/@${cLat.toFixed(4)},${cLng.toFixed(4)},13z`;
-        const rwgpsUrl = `https://ridewithgps.com/routes/new?lat=${cLat.toFixed(4)}&lng=${cLng.toFixed(4)}`;
-        document.getElementById('no-match-links').innerHTML =
-          `<a class="no-match-link" href="${trailLinkUrl}" target="_blank" rel="noopener">🔗 TrailLink</a>` +
-          `<a class="no-match-link" href="${mapsUrl}" target="_blank" rel="noopener">🗺️ Google Maps</a>` +
-          `<a class="no-match-link" href="${rwgpsUrl}" target="_blank" rel="noopener">🚴 RideWithGPS</a>`;
+        const mapsUrl      = `https://www.google.com/maps/search/rail+trail/@${cLat.toFixed(4)},${cLng.toFixed(4)},13z`;
+
+        let innerHtml = '';
+        if (disc.length > 0) {
+          innerHtml += `<div style="margin-bottom:8px;font-size:0.82rem;color:var(--text)">
+            🗺️ <strong>Found nearby trails from OpenStreetMap:</strong></div>`;
+          innerHtml += disc.map((d, i) =>
+            `<button class="dup-btn-update" style="margin:2px 4px 2px 0;font-size:0.78rem"
+              onclick="useDiscoveredTrail(${i})">${escHtml(d.osmName)}
+              <span style="opacity:.7;font-weight:400"> — ${Math.round(d.score*100)}% overlap</span>
+            </button>`
+          ).join('');
+          innerHtml += `<div style="margin-top:10px;font-size:0.78rem;color:var(--muted)">
+            Or search online:
+            <a class="no-match-link" href="${trailLinkUrl}" target="_blank" rel="noopener">TrailLink</a>
+            <a class="no-match-link" href="${mapsUrl}" target="_blank" rel="noopener">Google Maps</a>
+          </div>`;
+        } else {
+          innerHtml =
+            `<div>🔍 <strong>No nearby trail matched this GPS route.</strong> Search for rail trails near this location:</div>
+            <div class="no-match-links">
+              <a class="no-match-link" href="${trailLinkUrl}" target="_blank" rel="noopener">🔗 TrailLink</a>
+              <a class="no-match-link" href="${mapsUrl}" target="_blank" rel="noopener">🗺️ Google Maps</a>
+            </div>`;
+        }
+        document.getElementById('no-match-banner').innerHTML = innerHtml;
         noMatchEl.classList.add('visible');
 
-      } else if (cands.length === 1 && cands[0].distMi < MATCH_AUTO_MI) {
-        // Single tight match → auto-accept, show info banner
+      } else if (cands.length >= 1 && isAutoMatch(cands)) {
+        // Clear top match → auto-accept, show info banner
         const m = cands[0];
-        matchText.innerHTML = `🗺️ Matched to <strong>${escHtml(m.trail.name)}</strong> · ${m.distMi.toFixed(1)} mi from route center`;
+        matchText.innerHTML = `🗺️ Matched to <strong>${escHtml(m.trail.name)}</strong> · <span style="color:var(--muted);font-size:0.85em">${m.matchLabel}</span>`;
         matchBanner.classList.add('visible');
 
       } else {
@@ -1507,7 +1730,7 @@ function openModal(id = null, prefill = null) {
             <input type="radio" name="trail-match" value="${escHtml(c.trail.id)}"
               ${i === 0 ? 'checked' : ''}
               onchange="onMatchPick('${c.trail.id}','${escHtml(c.trail.name).replace(/'/g,"\\'")}','${escHtml(c.trail.state).replace(/'/g,"\\'")}')">
-            <span>${escHtml(c.trail.name)}</span><span class="match-dist">${c.distMi.toFixed(1)} mi from route center</span>
+            <span>${escHtml(c.trail.name)}</span><span class="match-dist">${c.matchLabel}</span>
           </label>`).join('');
         document.getElementById('match-picker-options').innerHTML = optionsHtml + `
           <label class="match-option">
@@ -1549,6 +1772,20 @@ function onMatchPick(id, name, state) {
     document.getElementById('f-name').value = name;
     document.getElementById('f-state').value = state;
   }
+}
+
+// Use a trail discovered from OSM to populate the log-ride form
+function useDiscoveredTrail(idx) {
+  const d = pendingDiscovered[idx];
+  if (!d) return;
+  // Populate name (state left blank — user can fill in)
+  document.getElementById('f-name').value  = d.osmName;
+  document.getElementById('f-state').value = '';
+  // Cache the polyline so overlap matching works if user re-opens
+  if (!TRAIL_POLYLINES) TRAIL_POLYLINES = {};
+  // Store under a temporary key for this session (won't match NEARBY_TRAILS id)
+  // hide the no-match banner now that user has chosen a trail
+  document.getElementById('no-match-banner').classList.remove('visible');
 }
 
 // Dismiss dup warning and allow logging on a different trail
