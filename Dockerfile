@@ -13,11 +13,11 @@ RUN npm install --omit=dev
 COPY server.js ./
 COPY public ./public
 
-# Stamp build metadata into the frontend (replaced by CI; no-op otherwise)
-ARG BUILD_DATE=__BUILD_DATE__
-ARG BUILD_SHA=__BUILD_SHA__
-RUN sed -i "s/__BUILD_DATE__/${BUILD_DATE}/g" public/index.html && \
-    sed -i "s/__BUILD_SHA__/${BUILD_SHA}/g"   public/index.html
+# Bake build metadata into the image as runtime ENV vars (server.js stamps HTML at startup)
+ARG BUILD_DATE=
+ARG BUILD_SHA=
+ENV BUILD_DATE=${BUILD_DATE}
+ENV BUILD_SHA=${BUILD_SHA}
 
 EXPOSE 3000
 
