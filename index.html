@@ -372,6 +372,29 @@
       align-items: flex-start;
     }
     .import-banner.visible { display: flex; }
+    .modal-fit-section {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .modal-fit-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.1s;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .modal-fit-btn:hover { border-color: #bbb; background: #eee; }
+    .modal-fit-hint { font-size: 0.78rem; color: var(--muted); }
+
     .match-banner {
       display: none;
       background: #e8f0fe;
@@ -582,6 +605,15 @@
     </div>
     <div class="hint" id="fit-location-note" style="display:none;margin-bottom:14px">
       📍 GPS route imported from FIT file.
+    </div>
+
+    <div class="modal-fit-section" id="modal-fit-section" style="display:none">
+      <button class="modal-fit-btn" onclick="document.getElementById('modal-fit-input').click()">
+        📂 Add FIT file
+      </button>
+      <span class="modal-fit-hint">imports GPS route &amp; distance</span>
+      <input type="file" id="modal-fit-input" accept=".fit" style="display:none"
+             onchange="handleModalFit(this)" />
     </div>
 
     <div class="modal-actions">
@@ -1171,12 +1203,81 @@ document.addEventListener('dragleave', e => {
 document.addEventListener('drop', e => {
   e.preventDefault();
   document.getElementById('drop-overlay').classList.remove('active');
-  const files = [...e.dataTransfer.files].filter(f => f.name.toLowerCase().endsWith('.fit'));
-  if (!files.length) return;
-  fitQueue = files;
-  fitBatchTotal = files.length;
+  const fitFiles = [...e.dataTransfer.files].filter(f => f.name.toLowerCase().endsWith('.fit'));
+  if (!fitFiles.length) return;
+  // If modal is open, apply FIT data into the open form instead of starting a new import
+  if (document.getElementById('modal-overlay').classList.contains('open')) {
+    applyFitToModal(fitFiles[0]);
+    return;
+  }
+  fitQueue = fitFiles;
+  fitBatchTotal = fitFiles.length;
   processNextFit();
 });
+
+// ─── Modal FIT handler (used when modal is already open) ─────────────────────
+function handleModalFitDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('modal-fit-zone').classList.remove('drag-over');
+  const file = [...e.dataTransfer.files].find(f => f.name.toLowerCase().endsWith('.fit'));
+  if (file) applyFitToModal(file);
+}
+
+function handleModalFit(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (file) applyFitToModal(file);
+}
+
+function applyFitToModal(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    let data;
+    try { data = parseFitBuffer(e.target.result); }
+    catch (err) { alert('Could not read FIT file: ' + err.message); return; }
+
+    // Date — fill only if empty
+    const session   = data.sessions?.[0];
+    const startTime = session?.start_time || data.records?.find(r => r.timestamp)?.timestamp;
+    if (startTime instanceof Date && !isNaN(startTime)) {
+      const df = document.getElementById('f-date');
+      if (!df.value) df.value = startTime.toISOString().split('T')[0];
+    }
+
+    // Distance — always update from FIT (actual distance ridden)
+    if (session?.total_distance) {
+      document.getElementById('f-miles').value = (session.total_distance * 0.000621371).toFixed(1);
+    }
+
+    // GPS polyline
+    const raw = [];
+    (data.records || []).forEach(r => {
+      if (r.position_lat != null && r.position_long != null &&
+          r.position_lat >= -90 && r.position_lat <= 90 &&
+          r.position_long >= -180 && r.position_long <= 180) {
+        raw.push([r.position_lat, r.position_long]);
+      }
+    });
+    const polyline = downsample(raw, 800);
+    if (polyline.length > 1) {
+      pendingPolyline = polyline;
+      if (previewLayer) { previewLayer.remove(); previewLayer = null; }
+      previewLayer = L.polyline(polyline, { color: '#2d7a3a', weight: 4, opacity: 0.55, dashArray: '6 4' }).addTo(map);
+      map.fitBounds(previewLayer.getBounds(), { padding: [40, 40], maxZoom: 14 });
+
+      const bannerText = document.getElementById('import-banner-text');
+      bannerText.innerHTML = `GPS route imported — <strong>${polyline.length} points</strong> will be drawn on the map.`;
+      document.getElementById('import-banner').classList.add('visible');
+      document.getElementById('location-group').style.display = 'none';
+      document.getElementById('fit-location-note').style.display = 'block';
+    }
+
+    // Hide the upload zone — done
+    document.getElementById('modal-fit-section').style.display = 'none';
+  };
+  reader.readAsArrayBuffer(file);
+}
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
 function openModal(id = null, prefill = null) {
@@ -1197,6 +1298,9 @@ function openModal(id = null, prefill = null) {
   matchBanner.classList.remove('visible');
   fitNote.style.display = 'none';
   locGroup.style.display = 'block';
+  // Show FIT upload zone for new rides only (not editing, not already a FIT import)
+  const fitSection = document.getElementById('modal-fit-section');
+  fitSection.style.display = (!id && !prefill?.hasFitGps) ? 'block' : 'none';
 
   if (prefill) {
     document.getElementById('f-name').value = prefill.name || '';
