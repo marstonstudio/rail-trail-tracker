@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Rail Trail Tracker</title>
+  <meta name="build-date" content="__BUILD_DATE__">
+  <meta name="build-sha"  content="__BUILD_SHA__">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <style>
@@ -586,7 +588,7 @@
 <div class="drop-overlay" id="drop-overlay">📂 Drop FIT files to import</div>
 
 <header>
-  <h1>🚴 Rail Trail Tracker</h1>
+  <h1><span id="build-badge" style="cursor:default">🚴</span> Rail Trail Tracker</h1>
   <div class="stats">
     <div><span class="stat-val" id="stat-ridden">0</span> rides logged</div>
     <div><span class="stat-val" id="stat-miles">0</span> mi ridden</div>
@@ -706,6 +708,30 @@
 </div>
 
 <script>
+// ─── Build info tooltip ───────────────────────────────────────────────────────
+(function() {
+  const sha  = document.querySelector('meta[name="build-sha"]')?.content  || '';
+  const date = document.querySelector('meta[name="build-date"]')?.content || '';
+  const badge = document.getElementById('build-badge');
+  if (!badge) return;
+  // Placeholders haven't been replaced → local dev build
+  if (!sha || sha === '__BUILD_SHA__') {
+    badge.title = 'Local dev build';
+    return;
+  }
+  let label = `Build ${sha.slice(0, 7)}`;
+  if (date) {
+    try {
+      const d = new Date(date);
+      label += ' · ' + d.toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+      });
+    } catch {}
+  }
+  badge.title = label;
+})();
+
 // ─── Nearby trail data (researched, within 100 mi of Concord MA) ──────────────
 const NEARBY_TRAILS = [
   // ── 0–15 mi from Concord MA ──────────────────────────────────────────────────

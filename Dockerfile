@@ -13,6 +13,12 @@ RUN npm install --omit=dev
 COPY server.js ./
 COPY public ./public
 
+# Stamp build metadata into the frontend (replaced by CI; falls back to "dev")
+ARG BUILD_DATE=dev
+ARG BUILD_SHA=local
+RUN sed -i "s/__BUILD_DATE__/${BUILD_DATE}/g" public/index.html && \
+    sed -i "s/__BUILD_SHA__/${BUILD_SHA}/g"   public/index.html
+
 EXPOSE 3000
 
 CMD ["node", "server.js"]
