@@ -21,7 +21,7 @@ try {
 } catch (e) { console.warn('Could not read index.html:', e.message); }
 
 app.use(express.json({ limit: '20mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 // ── Startup: migrate old trails.json → rides.json if needed ──────────────────
 (function migrate() {
