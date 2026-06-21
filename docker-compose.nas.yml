@@ -7,7 +7,7 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./data:/data
+      - /volume1/docker/rail-trail-tracker/data:/data
     environment:
       - PORT=3000
       - RIDES_FILE=/data/rides.json
