@@ -212,6 +212,8 @@
     .ride-card:hover { border-color: #bbb; border-left-color: var(--green); background: var(--bg); }
 
     .ride-card-name { font-weight: 600; font-size: 0.9rem; margin-bottom: 3px; }
+    .trail-name-link { color: inherit; text-decoration: none; }
+    .trail-name-link:hover { color: var(--blue); text-decoration: underline; }
     .ride-card-meta { font-size: 0.78rem; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
 
     .gps-badge {
@@ -411,7 +413,7 @@
     .modal-overlay {
       display: none;
       position: fixed;
-      inset: 0;
+      top: 0; bottom: 0; left: 0; right: 380px;
       background: rgba(0,0,0,0.4);
       z-index: 1000;
       align-items: center;
@@ -651,6 +653,7 @@
       .main { grid-template-columns: 1fr; grid-template-rows: 320px 1fr; height: auto; }
       .sidebar { border-left: none; border-top: 1px solid var(--border); min-height: 300px; }
       .stats { display: none; }
+      .modal-overlay { right: 0; }
     }
   </style>
 </head>
@@ -963,12 +966,14 @@ function nearbyIcon() {
 }
 
 function buildRiddenPopup(t) {
+  const nearby = t.nearbyId ? NEARBY_TRAILS.find(n => n.id === t.nearbyId) : null;
   return `<div class="lf-popup-name">${escHtml(t.name)}</div>
     <div class="lf-popup-meta">
       ${t.state ? escHtml(t.state) + ' · ' : ''}${t.miles ? t.miles + ' mi' : ''}
       ${t.date ? '<br>📅 ' + fmtDate(t.date) : ''}
       <br><span style="color:var(--green);font-weight:700">✅ Ridden</span>
-    </div>`;
+    </div>
+    ${nearby ? `<div class="lf-popup-links"><a href="${nearby.url}" target="_blank" rel="noopener">TrailLink ↗</a></div>` : ''}`;
 }
 
 function buildNearbyPopup(n) {
@@ -1128,11 +1133,13 @@ function renderRides() {
     const summary = [countPart, milesLabel, statePart.replace(' · ','')].filter(Boolean).join(' · ');
 
     // For single-ride groups use the simpler card; for multi-ride use the group card
+    const nearbyTrail = rep.nearbyId ? NEARBY_TRAILS.find(n => n.id === rep.nearbyId) : null;
+
     if (rides.length === 1) {
       return `
       <div class="ride-card" onclick="focusRidden('${rep.id}')">
         <div class="ride-card-name">
-          ${escHtml(rep.name)}
+          ${nearbyTrail ? `<a class="trail-name-link" href="${nearbyTrail.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escHtml(rep.name)}</a>` : escHtml(rep.name)}
           ${hasGps ? '<span class="gps-badge">GPS</span>' : ''}
         </div>
         <div class="ride-card-meta">
@@ -1161,7 +1168,7 @@ function renderRides() {
     return `
     <div class="trail-group">
       <div class="tg-header" onclick="focusRidden('${rep.id}')">
-        <div class="tg-name">${escHtml(rep.name)} ${hasGps ? '<span class="gps-badge">GPS</span>' : ''}</div>
+        <div class="tg-name">${nearbyTrail ? `<a class="trail-name-link" href="${nearbyTrail.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escHtml(rep.name)}</a>` : escHtml(rep.name)} ${hasGps ? '<span class="gps-badge">GPS</span>' : ''}</div>
         <div class="tg-summary">${summary}</div>
       </div>
       <div class="tg-rides">${rideRows}</div>
