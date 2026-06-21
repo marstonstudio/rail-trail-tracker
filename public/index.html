@@ -521,11 +521,13 @@
     .match-picker.visible { display: block; }
     .match-picker-label { font-size: 0.8rem; font-weight: 700; color: #1a56db; margin-bottom: 8px; }
     .match-option {
-      display: flex; align-items: baseline; gap: 7px; padding: 3px 0;
+      display: flex; align-items: flex-start; gap: 7px; padding: 4px 0;
       cursor: pointer; color: #1a3a6b; font-size: 0.83rem;
     }
-    .match-option input[type="radio"] { margin: 0; flex-shrink: 0; cursor: pointer; }
-    .match-dist { font-size: 0.73rem; color: #4a72b8; margin-left: 3px; }
+    .match-option input[type="radio"] { margin: 2px 0 0; flex-shrink: 0; cursor: pointer; }
+    .match-option-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+    .match-option-name { word-break: break-word; }
+    .match-dist { font-size: 0.73rem; color: #4a72b8; }
 
     /* No-match banner + search links */
     .no-match-banner {
@@ -558,7 +560,7 @@
       letter-spacing: 0.04em;
     }
 
-    input, select {
+    input:not([type="radio"]):not([type="checkbox"]), select {
       width: 100%;
       padding: 9px 12px;
       border: 1px solid var(--border);
@@ -569,7 +571,7 @@
       transition: border-color 0.15s;
       font-family: inherit;
     }
-    input:focus, select:focus { outline: none; border-color: var(--green); background: white; }
+    input:not([type="radio"]):not([type="checkbox"]):focus, select:focus { outline: none; border-color: var(--green); background: white; }
 
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
@@ -1910,12 +1912,15 @@ function openModal(id = null, prefill = null) {
             <input type="radio" name="trail-match" value="${escHtml(c.trail.id)}"
               ${i === 0 ? 'checked' : ''}
               onchange="onMatchPick('${c.trail.id}','${escHtml(c.trail.name).replace(/'/g,"\\'")}','${escHtml(c.trail.state).replace(/'/g,"\\'")}')">
-            <span>${escHtml(c.trail.name)}</span><span class="match-dist">${c.matchLabel}</span>
+            <span class="match-option-text">
+              <span class="match-option-name">${escHtml(c.trail.name)}</span>
+              <span class="match-dist">${c.matchLabel}</span>
+            </span>
           </label>`).join('');
         document.getElementById('match-picker-options').innerHTML = optionsHtml + `
           <label class="match-option">
             <input type="radio" name="trail-match" value="" onchange="onMatchPick('','','')">
-            <span>None of these — save as custom ride</span>
+            <span class="match-option-text"><span class="match-option-name">None of these — save as custom ride</span></span>
           </label>`;
         matchPicker.classList.add('visible');
       }
