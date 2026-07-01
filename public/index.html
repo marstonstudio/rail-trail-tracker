@@ -1039,6 +1039,8 @@ let pendingFitFile = null;
 let pendingExtraNearbyIds = [];
 let pendingSelectedIds = [];
 let pendingCandidates = [];
+let matchCandidateColors = {};
+let userTouchedMatchPicker = false;
 
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -1542,7 +1544,7 @@ function renderMatchMap(cands) {
   };
 
   cands.forEach((c, i) => {
-    const color = MATCH_PALETTE[i % MATCH_PALETTE.length];
+    const color = matchCandidateColors[c.trail.id] || MATCH_PALETTE[i % MATCH_PALETTE.length];
     const trailPts = TRAIL_POLYLINES?.[c.trail.id];
     if (trailPts && trailPts.length > 1) {
       const line = L.polyline(trailPts, { color, weight: 4, opacity: 0.75, dashArray: '5 5' }).addTo(matchMapInstance);
@@ -1569,6 +1571,25 @@ function renderMatchMap(cands) {
       layerByTrailId[c.trail.id] = line;
       matchMapBoundsPts.push(...pts);
       fitToBounds();
+
+      // Feed the newly-discovered overlap back into the candidate list so ranking
+      // (and which trail is "primary") reflects real overlap, not just the
+      // distance-from-center fallback that was used before this fetch resolved.
+      if (pendingPolyline && pendingCandidates.length) {
+        const score = overlapScore(pendingPolyline, pts);
+        const cand = pendingCandidates.find(x => x.trail.id === c.trail.id);
+        if (cand && score !== null) {
+          cand.score = score;
+          cand.matchLabel = `${Math.round(score * 100)}% overlap`;
+          pendingCandidates = sortCandidatesByScore(pendingCandidates);
+          if (!userTouchedMatchPicker) {
+            const sig = significantCandidates(pendingCandidates).map(x => x.trail.id);
+            pendingSelectedIds = sig.length ? sig : (pendingCandidates[0] ? [pendingCandidates[0].trail.id] : []);
+          }
+          renderMatchOptions();
+          syncMultiMatchFields();
+        }
+      }
     });
   });
 
@@ -1619,8 +1640,7 @@ async function fetchPolylinesNearTrack(polyline) {
   const e = (Math.ceil ((Math.max(...lngs) + BUF) * 10) / 10).toFixed(1);
   const bboxKey = `${s},${w},${n},${e}`;
 
-  if (fetchedBboxKeys.has(bboxKey)) return; // already fetched this area this session
-  fetchedBboxKeys.add(bboxKey);
+  if (fetchedBboxKeys.has(bboxKey)) return; // already successfully fetched this area this session
 
   const query = `[out:json][timeout:18];
 way["name"]["highway"~"path|cycleway|track|footway|bridleway"](${s},${w},${n},${e});
@@ -1637,6 +1657,7 @@ out geom qt;`;
     clearTimeout(timer);
     if (!resp.ok) return;
     const json = await resp.json();
+    fetchedBboxKeys.add(bboxKey); // only mark as done once we actually got usable data back
 
     if (!TRAIL_POLYLINES) TRAIL_POLYLINES = {};
 
@@ -1648,10 +1669,17 @@ out geom qt;`;
       if (!el.geometry || !el.tags?.name) continue;
       const osmName = el.tags.name;
       const pts     = el.geometry.map(g => [g.lat, g.lon]);
+      const wLat    = pts.reduce((sum, p) => sum + p[0], 0) / pts.length;
+      const wLng    = pts.reduce((sum, p) => sum + p[1], 0) / pts.length;
 
-      // Try to match to a known NEARBY_TRAIL (check name + any osmNames aliases)
+      // Try to match to a known NEARBY_TRAIL (check name + any osmNames aliases),
+      // but only among trails whose declared location is plausibly nearby this way.
+      // Without this, trails that share a generic name prefix (e.g. several
+      // "Mass Central RT — ..." segments) can steal geometry that actually
+      // belongs to a completely different, far-away segment.
       let bestId = null, bestScore = 0.5; // threshold: at least 50% keyword overlap
       for (const t of NEARBY_TRAILS) {
+        if (t.lat && t.lng && haversineMi(wLat, wLng, t.lat, t.lng) > 20) continue;
         const namesToCheck = [t.name, ...(t.osmNames || [])];
         for (const n of namesToCheck) {
           const s = nameMatchScore(osmName, n);
@@ -1700,18 +1728,9 @@ out geom qt;`;
 // avoids repeatedly re-querying the same trail every time the picker re-renders.
 const attemptedDirectFetch = new Set();
 
-/**
- * Query Overpass directly around a single candidate trail's own location/name,
- * for use in the match-picker map when the bbox-wide scan (fetchPolylinesNearTrack)
- * didn't turn up a confident name match for it. Looser name-match threshold since
- * we're searching for one specific known trail, not disambiguating among many.
- */
-async function fetchTrailPolylineDirect(trail) {
-  if (TRAIL_POLYLINES?.[trail.id]?.length > 1) return TRAIL_POLYLINES[trail.id];
-  if (attemptedDirectFetch.has(trail.id)) return null;
-  attemptedDirectFetch.add(trail.id);
-  if (!trail.lat || !trail.lng) return null;
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+async function fetchTrailPolylineDirectAttempt(trail) {
   // Bbox sized roughly to the trail's own length (longer trails need a wider search area).
   const buf = Math.min(0.6, Math.max(0.06, (trail.miles || 5) / 60));
   const s = (trail.lat - buf).toFixed(4), n = (trail.lat + buf).toFixed(4);
@@ -1756,6 +1775,28 @@ async function fetchTrailPolylineDirect(trail) {
     if (e.name !== 'AbortError') console.debug('Direct trail fetch failed for', trail.name, e.message);
   }
   return null;
+}
+
+/**
+ * Query Overpass directly around a single candidate trail's own location/name,
+ * for use in the match-picker map when the bbox-wide scan (fetchPolylinesNearTrack)
+ * didn't turn up a confident name match for it. Looser name-match threshold since
+ * we're searching for one specific known trail, not disambiguating among many.
+ * Retries once after a short delay — the public Overpass instance sometimes
+ * fails/times out a request that lands right after the much larger bbox-wide scan.
+ */
+async function fetchTrailPolylineDirect(trail) {
+  if (TRAIL_POLYLINES?.[trail.id]?.length > 1) return TRAIL_POLYLINES[trail.id];
+  if (attemptedDirectFetch.has(trail.id)) return null;
+  if (!trail.lat || !trail.lng) { attemptedDirectFetch.add(trail.id); return null; }
+
+  let result = await fetchTrailPolylineDirectAttempt(trail);
+  if (!result) {
+    await sleep(1500);
+    result = await fetchTrailPolylineDirectAttempt(trail);
+  }
+  attemptedDirectFetch.add(trail.id);
+  return result;
 }
 
 function haversineMi(lat1, lng1, lat2, lng2) {
@@ -2199,6 +2240,8 @@ function openModal(id = null, prefill = null) {
   pendingExtraNearbyIds = [];
   pendingSelectedIds = [];
   pendingCandidates = [];
+  matchCandidateColors = {};
+  userTouchedMatchPicker = false;
 
   // Show FIT upload zone for new rides only (not editing, not already a FIT import)
   const fitSection = document.getElementById('modal-fit-section');
@@ -2279,25 +2322,12 @@ function openModal(id = null, prefill = null) {
       } else {
         // Ambiguous, or the ride appears to span multiple trails → multi-select picker
         pendingCandidates = cands;
+        matchCandidateColors = {};
+        cands.forEach((c, i) => { matchCandidateColors[c.trail.id] = MATCH_PALETTE[i % MATCH_PALETTE.length]; });
         const significant = significantCandidates(cands).map(c => c.trail.id);
         pendingSelectedIds = significant.length ? significant : (cands[0] ? [cands[0].trail.id] : []);
 
-        const optionsHtml = cands.map((c, i) => `
-          <label class="match-option">
-            <input type="checkbox" value="${escHtml(c.trail.id)}"
-              ${pendingSelectedIds.includes(c.trail.id) ? 'checked' : ''}
-              onchange="toggleMatchCandidate('${c.trail.id}', this.checked)">
-            <span class="match-color-dot" style="background:${MATCH_PALETTE[i % MATCH_PALETTE.length]}"></span>
-            <span class="match-option-text">
-              <span class="match-option-name">${escHtml(c.trail.name)}</span>
-              <span class="match-dist">${c.matchLabel}</span>
-            </span>
-          </label>`).join('');
-        document.getElementById('match-picker-options').innerHTML = `
-          <div class="match-map-legend"><span class="match-color-dot" style="background:#2d7a3a"></span> Your ride &nbsp;·&nbsp; dashed lines = candidate trails</div>` +
-          optionsHtml + `
-          <div class="match-multi-hint" id="match-multi-hint"></div>
-          <button type="button" class="link-btn" style="margin-top:6px" onclick="clearMatchSelection()">None of these — save as custom ride</button>`;
+        renderMatchOptions();
         matchPicker.classList.add('visible');
         document.querySelector('.modal').classList.add('modal-wide');
         syncMultiMatchFields();
@@ -2334,8 +2364,40 @@ function significantCandidates(cands) {
   return cands.filter(c => c.score !== null && c.score >= MULTI_MATCH_MIN_SCORE);
 }
 
+// Same ranking as findAllNearbyMatches: scored candidates (best overlap first),
+// then unscored ones by distance. Used to re-rank after a background fetch
+// discovers a real overlap score for a candidate that initially had none.
+function sortCandidatesByScore(cands) {
+  return [...cands].sort((a, b) => {
+    const sa = a.score ?? -1, sb = b.score ?? -1;
+    return sb - sa || a.distMi - b.distMi;
+  });
+}
+
+// (Re)builds the checkbox list from pendingCandidates/pendingSelectedIds — used
+// both for the initial render and whenever scores get updated in the background.
+function renderMatchOptions() {
+  const optionsHtml = pendingCandidates.map(c => `
+    <label class="match-option">
+      <input type="checkbox" value="${escHtml(c.trail.id)}"
+        ${pendingSelectedIds.includes(c.trail.id) ? 'checked' : ''}
+        onchange="toggleMatchCandidate('${c.trail.id}', this.checked)">
+      <span class="match-color-dot" style="background:${matchCandidateColors[c.trail.id]}"></span>
+      <span class="match-option-text">
+        <span class="match-option-name">${escHtml(c.trail.name)}</span>
+        <span class="match-dist">${c.matchLabel}</span>
+      </span>
+    </label>`).join('');
+  document.getElementById('match-picker-options').innerHTML = `
+    <div class="match-map-legend"><span class="match-color-dot" style="background:#2d7a3a"></span> Your ride &nbsp;·&nbsp; dashed lines = candidate trails</div>` +
+    optionsHtml + `
+    <div class="match-multi-hint" id="match-multi-hint"></div>
+    <button type="button" class="link-btn" style="margin-top:6px" onclick="clearMatchSelection()">None of these — save as custom ride</button>`;
+}
+
 // Called when a checkbox in the multi-select match picker is toggled
 function toggleMatchCandidate(id, checked) {
+  userTouchedMatchPicker = true;
   if (checked) {
     if (!pendingSelectedIds.includes(id)) pendingSelectedIds.push(id);
   } else {
@@ -2369,6 +2431,7 @@ function syncMultiMatchFields() {
 
 // "None of these" — clear all selections and let the user log a fully custom ride
 function clearMatchSelection() {
+  userTouchedMatchPicker = true;
   pendingSelectedIds = [];
   document.querySelectorAll('#match-picker-options input[type="checkbox"]').forEach(cb => cb.checked = false);
   pendingNearbyId = null;
