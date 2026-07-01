@@ -1004,6 +1004,7 @@ let editingId = null;
 let pendingPolyline = null;
 let pendingNearbyId = null;
 let pendingFitFingerprint = null;
+let pendingFitFile = null;
 
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -1016,11 +1017,6 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   maxZoom: 18
 }).addTo(map);
-
-// Mark Concord MA
-L.circleMarker([42.4604, -71.3489], {
-  radius: 6, color: '#888', fillColor: '#fff', fillOpacity: 1, weight: 2
-}).addTo(map).bindTooltip('Concord, MA', { permanent: false });
 
 const mapLayers = {};     // trail id → ridden layer
 const nearbyMarkers = {}; // nearby id → blue marker
@@ -1224,6 +1220,7 @@ function renderRides() {
           ${rep.date ? `<span>📅 ${fmtDate(rep.date)}</span>` : ''}
         </div>
         <div class="ride-card-actions">
+          ${rep.fitFile ? `<button class="icon-btn" title="Rescan FIT file for a better trail match" onclick="event.stopPropagation(); rescanRide('${rep.id}')">🔄</button>` : ''}
           <button class="icon-btn" onclick="event.stopPropagation(); openModal('${rep.id}')">Edit</button>
           <button class="icon-btn delete" onclick="event.stopPropagation(); deleteTrail('${rep.id}')">✕</button>
         </div>
@@ -1236,6 +1233,7 @@ function renderRides() {
         ${r.miles ? `<span class="tg-ride-miles">${r.miles} mi</span>` : ''}
         ${r.polyline ? '<span class="gps-badge" style="margin:0">GPS</span>' : ''}
         <div class="tg-ride-actions">
+          ${r.fitFile ? `<button class="icon-btn" title="Rescan FIT file for a better trail match" onclick="event.stopPropagation(); rescanRide('${r.id}')">🔄</button>` : ''}
           <button class="icon-btn" onclick="event.stopPropagation(); openModal('${r.id}')">Edit</button>
           <button class="icon-btn delete" onclick="event.stopPropagation(); deleteTrail('${r.id}')">✕</button>
         </div>
@@ -1669,6 +1667,18 @@ function isAutoMatch(cands) {
 
 // Fingerprint a FIT file using its date, distance, and first/last GPS point.
 // Used to detect re-imports of the same activity.
+function hashString(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(16) + '-' + str.length;
+}
+
+async function storeFitFile(key, buffer) {
+  try {
+    await fetch(`/api/fits/${key}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: buffer });
+  } catch (e) { console.warn('Could not store FIT file for rescanning:', e.message); }
+}
+
 function makeFitFingerprint(date, miles, polyline) {
   const pts = polyline || [];
   let fp = `${date}|${miles}`;
@@ -1754,6 +1764,11 @@ async function parseFit(buffer, filename, current = 0, total = 0) {
   const fp = makeFitFingerprint(date, miles, pendingPolyline);
   const dupTrail = trails.find(t => t.fitFingerprint && t.fitFingerprint === fp) || null;
 
+  // Keep a copy of the raw FIT file server-side so it can be rescanned later
+  // (e.g. after improving the trail-matching logic)
+  const fitFileKey = hashString(fp);
+  storeFitFile(fitFileKey, buffer);
+
   // Fetch trail polylines from Overpass (and discover unknown trails near this track).
   // Silently falls back to centroid matching if Overpass is unavailable.
   if (pendingPolyline) {
@@ -1783,6 +1798,7 @@ async function parseFit(buffer, filename, current = 0, total = 0) {
     discovered: pendingDiscovered,
     dupTrail,
     fitFingerprint: fp,
+    fitFile: fitFileKey,
   });
 
   if (pendingPolyline) {
@@ -1796,6 +1812,72 @@ function downsample(pts, max) {
   if (pts.length <= max) return pts;
   const step = pts.length / max;
   return Array.from({ length: max }, (_, i) => pts[Math.round(i * step)]);
+}
+
+// Re-run trail matching against a ride's originally-imported FIT file —
+// useful after improving the matching logic, to pick up a better match.
+async function rescanRide(id) {
+  const t = trails.find(x => x.id === id);
+  if (!t) return;
+  if (!t.fitFile) { alert('No stored FIT file for this ride — it was imported before rescanning was supported.'); return; }
+
+  showFitSpinner('Rescanning FIT file…');
+  let buffer;
+  try {
+    const res = await fetch(`/api/fits/${t.fitFile}`);
+    if (!res.ok) throw new Error('FIT file not found on server');
+    buffer = await res.arrayBuffer();
+  } catch (e) {
+    hideFitSpinner();
+    alert('Could not load the stored FIT file: ' + e.message);
+    return;
+  }
+
+  let data;
+  try {
+    data = parseFitBuffer(buffer);
+  } catch (e) {
+    hideFitSpinner();
+    alert('Could not parse the stored FIT file: ' + e.message);
+    return;
+  }
+
+  const raw = [];
+  (data.records || []).forEach(r => {
+    const lat = r.position_lat, lng = r.position_long;
+    if (lat == null || lng == null) return;
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) raw.push([lat, lng]);
+  });
+  const polyline = downsample(raw, 800);
+  pendingPolyline = polyline.length > 1 ? polyline : null;
+
+  showFitSpinner('Matching trail…');
+  if (pendingPolyline) await fetchPolylinesNearTrack(pendingPolyline);
+
+  const candidates = findAllNearbyMatches(pendingPolyline || []);
+  const bestMatch = candidates[0] || null;
+  pendingNearbyId = bestMatch?.trail?.id || null;
+
+  hideFitSpinner();
+  openModal(id, {
+    name: bestMatch ? bestMatch.trail.name : t.name,
+    state: bestMatch ? bestMatch.trail.state : t.state,
+    miles: t.miles,
+    date: t.date,
+    hasFitGps: !!pendingPolyline,
+    pointCount: polyline.length,
+    candidates,
+    discovered: pendingDiscovered,
+    fitFingerprint: t.fitFingerprint,
+    fitFile: t.fitFile,
+    rescan: true,
+  });
+
+  if (pendingPolyline) {
+    if (previewLayer) { previewLayer.remove(); previewLayer = null; }
+    previewLayer = L.polyline(pendingPolyline, { color: '#2d7a3a', weight: 4, opacity: 0.55, dashArray: '6 4' }).addTo(map);
+    map.fitBounds(previewLayer.getBounds(), { padding: [40, 40], maxZoom: 14 });
+  }
 }
 
 // Drag and drop
@@ -1904,6 +1986,7 @@ function openModal(id = null, prefill = null) {
     ? `📥 ${prefill.filename.replace(/\.fit$/i, '')}${prefill.queueInfo || ''}`
     : prefill && !prefill.fromNearby ? `📥 Import FIT${prefill.queueInfo || ''}` : null;
   document.getElementById('modal-title').textContent =
+    prefill?.rescan ? `🔄 Rescan — ${prefill.name}` :
     prefill?.fromNearby ? `Log Ride — ${prefill.name}` :
     fitLabel ||
     (id ? 'Edit Ride' : 'Log a Ride');
@@ -1919,6 +2002,7 @@ function openModal(id = null, prefill = null) {
 
   // Store fingerprint for saving later
   pendingFitFingerprint = prefill?.fitFingerprint || null;
+  pendingFitFile = prefill?.fitFile || null;
 
   // Show FIT upload zone for new rides only (not editing, not already a FIT import)
   const fitSection = document.getElementById('modal-fit-section');
@@ -1951,8 +2035,8 @@ function openModal(id = null, prefill = null) {
       fitNote.style.display = 'block';
     }
 
-    // ── Match candidates (only for FIT imports, not when editing or fromNearby) ──
-    if (prefill.candidates && !prefill.fromNearby && !id) {
+    // ── Match candidates (FIT imports, or a rescan — not when editing normally or fromNearby) ──
+    if (prefill.candidates && !prefill.fromNearby && (!id || prefill.rescan)) {
       const cands = prefill.candidates;
       const [cLat, cLng] = pendingPolyline ? trackCentroid(pendingPolyline) : [42.46, -71.35];
 
@@ -2097,6 +2181,7 @@ function closeModal() {
   pendingPolyline = null;
   pendingNearbyId = null;
   pendingFitFingerprint = null;
+  pendingFitFile = null;
   if (previewLayer) { previewLayer.remove(); previewLayer = null; }
   // Advance to next file in a multi-file import batch
   if (fitQueue.length) setTimeout(processNextFit, 150);
@@ -2122,11 +2207,13 @@ function saveTrail() {
     polyline: pendingPolyline || existing?.polyline || null,
     nearbyId: pendingNearbyId || existing?.nearbyId || null,
     fitFingerprint: pendingFitFingerprint || existing?.fitFingerprint || null,
+    fitFile: pendingFitFile || existing?.fitFile || null,
   };
 
   pendingPolyline = null;
   pendingNearbyId = null;
   pendingFitFingerprint = null;
+  pendingFitFile = null;
   if (previewLayer) { previewLayer.remove(); previewLayer = null; }
 
   if (editingId) {

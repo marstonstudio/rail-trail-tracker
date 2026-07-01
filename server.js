@@ -5,6 +5,8 @@ const path    = require('path');
 const app        = express();
 const PORT       = process.env.PORT       || 3000;
 const RIDES_FILE = process.env.RIDES_FILE || '/data/rides.json';
+const FITS_DIR   = path.join(path.dirname(RIDES_FILE), 'fits');
+const SAFE_KEY   = /^[a-zA-Z0-9_-]{1,80}$/;
 
 // ── Build metadata stamped into HTML at startup ───────────────────────────────
 // ENV vars BUILD_SHA / BUILD_DATE are baked into the Docker image by CI.
@@ -66,8 +68,30 @@ app.delete('/api/rides', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── POST /api/fits/:key — store the raw FIT binary for later rescanning ──────
+app.post('/api/fits/:key', express.raw({ type: () => true, limit: '20mb' }), (req, res) => {
+  const key = req.params.key;
+  if (!SAFE_KEY.test(key)) return res.status(400).json({ error: 'Invalid key' });
+  if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'Empty body' });
+  if (!fs.existsSync(FITS_DIR)) fs.mkdirSync(FITS_DIR, { recursive: true });
+  fs.writeFileSync(path.join(FITS_DIR, `${key}.fit`), req.body);
+  res.json({ ok: true });
+});
+
+// ── GET /api/fits/:key — retrieve a previously stored FIT file ───────────────
+app.get('/api/fits/:key', (req, res) => {
+  const key = req.params.key;
+  if (!SAFE_KEY.test(key)) return res.status(400).json({ error: 'Invalid key' });
+  const filePath = path.join(FITS_DIR, `${key}.fit`);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
+  res.type('application/octet-stream').send(fs.readFileSync(filePath));
+});
+
 // ── Catch-all → SPA (serve build-stamped HTML) ───────────────────────────────
 app.get('*', (req, res) => {
+  // In dev (no BUILD_SHA), read fresh from disk each request so HTML edits are
+  // picked up without a server restart. In production, serve the stamped cache.
+  if (!BUILD_SHA) return res.sendFile(INDEX_PATH);
   if (INDEX_HTML) return res.type('html').send(INDEX_HTML);
   res.sendFile(INDEX_PATH);
 });
