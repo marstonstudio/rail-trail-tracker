@@ -1519,16 +1519,21 @@ function renderMatchMap(cands) {
   matchMapBoundsPts = [];
   const thisRender = ++matchMapRenderToken;
   const layerByTrailId = {};
+  let rideLine = null;
 
   if (pendingPolyline && pendingPolyline.length > 1) {
-    const rideLine = L.polyline(pendingPolyline, { color: '#2d7a3a', weight: 5, opacity: 0.9 }).addTo(matchMapInstance);
+    rideLine = L.polyline(pendingPolyline, { color: '#2d7a3a', weight: 5, opacity: 0.9 }).addTo(matchMapInstance);
     matchMapLayers.push(rideLine);
     matchMapBoundsPts.push(...pendingPolyline);
   }
 
+  // The ride path must always render above candidate trail overlays — any
+  // layer added after it (including ones swapped in asynchronously) would
+  // otherwise sit on top by Leaflet's default stacking order.
   const fitToBounds = () => {
     matchMapInstance.invalidateSize();
     if (matchMapBoundsPts.length) matchMapInstance.fitBounds(matchMapBoundsPts, { padding: [20, 20], maxZoom: 15 });
+    if (rideLine) rideLine.bringToFront();
   };
 
   // Cap how many uncached candidates get an eager background fetch — a widened
