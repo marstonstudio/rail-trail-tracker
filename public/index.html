@@ -228,6 +228,18 @@
       vertical-align: middle;
     }
 
+    .multi-trail-badge {
+      display: inline-block;
+      padding: 1px 5px;
+      background: var(--blue-light);
+      color: var(--blue);
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      margin-left: 4px;
+      vertical-align: middle;
+    }
+
     .ride-card-actions {
       position: absolute;
       top: 8px;
@@ -528,6 +540,10 @@
     .match-option-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
     .match-option-name { word-break: break-word; }
     .match-dist { font-size: 0.73rem; color: #4a72b8; }
+    .match-multi-hint {
+      margin-top: 8px; padding-top: 8px; border-top: 1px solid #cdddf7;
+      font-size: 0.78rem; color: #1a3a6b; font-weight: 600;
+    }
 
     /* No-match banner + search links */
     .no-match-banner {
@@ -1005,6 +1021,9 @@ let pendingPolyline = null;
 let pendingNearbyId = null;
 let pendingFitFingerprint = null;
 let pendingFitFile = null;
+let pendingExtraNearbyIds = [];
+let pendingSelectedIds = [];
+let pendingCandidates = [];
 
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -1038,14 +1057,16 @@ function nearbyIcon() {
 }
 
 function buildRiddenPopup(t) {
-  const nearby = t.nearbyId ? NEARBY_TRAILS.find(n => n.id === t.nearbyId) : null;
+  const linkedIds = [t.nearbyId, ...(t.extraNearbyIds || [])].filter(Boolean);
+  const linkedTrails = linkedIds.map(id => NEARBY_TRAILS.find(n => n.id === id)).filter(Boolean);
+  const links = linkedTrails.map(n => `<a href="${n.url}" target="_blank" rel="noopener">${linkedTrails.length > 1 ? escHtml(n.name) + ' ↗' : 'TrailLink ↗'}</a>`).join('');
   return `<div class="lf-popup-name">${escHtml(t.name)}</div>
     <div class="lf-popup-meta">
       ${t.state ? escHtml(t.state) + ' · ' : ''}${t.miles ? t.miles + ' mi' : ''}
       ${t.date ? '<br>📅 ' + fmtDate(t.date) : ''}
       <br><span style="color:var(--green);font-weight:700">✅ Ridden</span>
     </div>
-    ${nearby ? `<div class="lf-popup-links"><a href="${nearby.url}" target="_blank" rel="noopener">TrailLink ↗</a></div>` : ''}`;
+    ${links ? `<div class="lf-popup-links">${links}</div>` : ''}`;
 }
 
 function buildNearbyPopup(n) {
@@ -1065,7 +1086,7 @@ function buildNearbyPopup(n) {
 }
 
 function riddenForNearby(nearbyId) {
-  return trails.find(t => t.nearbyId === nearbyId);
+  return trails.find(t => t.nearbyId === nearbyId || (t.extraNearbyIds || []).includes(nearbyId));
 }
 
 function addRiddenToMap(t) {
@@ -1173,25 +1194,38 @@ function renderRides() {
 
   // Show panel header
   hdr.style.display = '';
-  const uniqueTrails = new Set(trails.map(t => t.nearbyId || t.name.toLowerCase().trim())).size;
+  const uniqueTrailKeys = new Set();
+  trails.forEach(t => {
+    if (t.nearbyId) {
+      uniqueTrailKeys.add(t.nearbyId);
+      (t.extraNearbyIds || []).forEach(id => uniqueTrailKeys.add(id));
+    } else {
+      uniqueTrailKeys.add(t.name.toLowerCase().trim());
+    }
+  });
+  const uniqueTrails = uniqueTrailKeys.size;
   countLbl.textContent = `${trails.length} ride${trails.length===1?'':'s'} · ${uniqueTrails} trail${uniqueTrails===1?'':'s'}`;
 
-  // Group rides by trail (nearbyId if set, else normalised name)
+  // Group rides by trail. A ride that spans multiple trails (nearbyId + extraNearbyIds)
+  // appears in each of those trails' groups — it's still counted once in the stats above
+  // and in the top-level mileage/ride totals, this only affects how it's displayed.
   const groups = new Map();
   for (const t of trails) {
-    const key = t.nearbyId || t.name.toLowerCase().trim();
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(t);
+    const keys = t.nearbyId ? [t.nearbyId, ...(t.extraNearbyIds || [])] : [t.name.toLowerCase().trim()];
+    for (const key of keys) {
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(t);
+    }
   }
 
   // Sort groups by most recent ride date descending
-  const sortedGroups = [...groups.values()].sort((a, b) => {
-    const aMax = a.reduce((m, r) => r.date > m ? r.date : m, '');
-    const bMax = b.reduce((m, r) => r.date > m ? r.date : m, '');
+  const sortedGroups = [...groups.entries()].sort((a, b) => {
+    const aMax = a[1].reduce((m, r) => r.date > m ? r.date : m, '');
+    const bMax = b[1].reduce((m, r) => r.date > m ? r.date : m, '');
     return bMax.localeCompare(aMax);
   });
 
-  el.innerHTML = sortedGroups.map(rides => {
+  el.innerHTML = sortedGroups.map(([key, rides]) => {
     // Sort rides within group newest-first
     rides.sort((a, b) => (b.date||'').localeCompare(a.date||''));
     const rep = rides[0];
@@ -1200,22 +1234,33 @@ function renderRides() {
     const milesLabel = totalMiles > 0
       ? (rides.length > 1 ? `${totalMiles % 1 === 0 ? totalMiles : totalMiles.toFixed(1)} mi total` : `${rep.miles} mi`)
       : '';
-    const statePart = rep.state ? `${escHtml(rep.state)} · ` : '';
+    // This group's own trail identity (may differ from rep.name if rep spans multiple trails)
+    const nearbyTrail = NEARBY_TRAILS.find(n => n.id === key) || null;
+    const displayName  = nearbyTrail ? nearbyTrail.name  : rep.name;
+    const displayState = nearbyTrail ? nearbyTrail.state : rep.state;
+    const statePart = displayState ? `${escHtml(displayState)} · ` : '';
     const countPart = rides.length > 1 ? `${rides.length} rides` : '1 ride';
     const summary = [countPart, milesLabel, statePart.replace(' · ','')].filter(Boolean).join(' · ');
+    const nameLink = nearbyTrail
+      ? `<a class="trail-name-link" href="${nearbyTrail.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escHtml(displayName)}</a>`
+      : escHtml(displayName);
 
-    // For single-ride groups use the simpler card; for multi-ride use the group card
-    const nearbyTrail = rep.nearbyId ? NEARBY_TRAILS.find(n => n.id === rep.nearbyId) : null;
+    // Badge for rides that cover more than one trail
+    const multiBadge = r => {
+      const linkedCount = 1 + (r.extraNearbyIds?.length || 0);
+      return (r.nearbyId && linkedCount > 1) ? `<span class="multi-trail-badge" title="Also logged on ${linkedCount - 1} other trail${linkedCount>2?'s':''}">🔗 ${linkedCount} trails</span>` : '';
+    };
 
     if (rides.length === 1) {
       return `
       <div class="ride-card" onclick="focusRidden('${rep.id}')">
         <div class="ride-card-name">
-          ${nearbyTrail ? `<a class="trail-name-link" href="${nearbyTrail.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escHtml(rep.name)}</a>` : escHtml(rep.name)}
+          ${nameLink}
           ${hasGps ? '<span class="gps-badge">GPS</span>' : ''}
+          ${multiBadge(rep)}
         </div>
         <div class="ride-card-meta">
-          ${rep.state ? `<span>📍 ${escHtml(rep.state)}</span>` : ''}
+          ${displayState ? `<span>📍 ${escHtml(displayState)}</span>` : ''}
           ${rep.miles ? `<span>📏 ${rep.miles} mi</span>` : ''}
           ${rep.date ? `<span>📅 ${fmtDate(rep.date)}</span>` : ''}
         </div>
@@ -1232,6 +1277,7 @@ function renderRides() {
         <span class="tg-ride-date">${r.date ? fmtDate(r.date) : '—'}</span>
         ${r.miles ? `<span class="tg-ride-miles">${r.miles} mi</span>` : ''}
         ${r.polyline ? '<span class="gps-badge" style="margin:0">GPS</span>' : ''}
+        ${multiBadge(r)}
         <div class="tg-ride-actions">
           ${r.fitFile ? `<button class="icon-btn" title="Rescan FIT file for a better trail match" onclick="event.stopPropagation(); rescanRide('${r.id}')">🔄</button>` : ''}
           <button class="icon-btn" onclick="event.stopPropagation(); openModal('${r.id}')">Edit</button>
@@ -1242,7 +1288,7 @@ function renderRides() {
     return `
     <div class="trail-group">
       <div class="tg-header" onclick="focusRidden('${rep.id}')">
-        <div class="tg-name">${nearbyTrail ? `<a class="trail-name-link" href="${nearbyTrail.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escHtml(rep.name)}</a>` : escHtml(rep.name)} ${hasGps ? '<span class="gps-badge">GPS</span>' : ''}</div>
+        <div class="tg-name">${nameLink} ${hasGps ? '<span class="gps-badge">GPS</span>' : ''}</div>
         <div class="tg-summary">${summary}</div>
       </div>
       <div class="tg-rides">${rideRows}</div>
@@ -1444,6 +1490,7 @@ const MATCH_AUTO_MI       = 2;    // centroid auto-accept threshold
 const MATCH_RADIUS_M      = 150;  // FIT point counts as "on trail" if within this many metres
 const AUTO_MATCH_SCORE    = 0.35; // ≥35% overlap → auto-accept (clear winner)
 const CANDIDATE_MIN_SCORE = 0.05; // ≥5% overlap → show as candidate in picker
+const MULTI_MATCH_MIN_SCORE = 0.15; // ≥15% overlap → pre-checked as "also ridden" in multi-trail picker
 const DISCOVER_MIN_SCORE  = 0.20; // ≥20% overlap → surface as a discovered trail suggestion
 
 // Polyline cache: { [nearbyTrailId]: [[lat,lng],...] }  populated on-demand via Overpass.
@@ -2003,6 +2050,9 @@ function openModal(id = null, prefill = null) {
   // Store fingerprint for saving later
   pendingFitFingerprint = prefill?.fitFingerprint || null;
   pendingFitFile = prefill?.fitFile || null;
+  pendingExtraNearbyIds = [];
+  pendingSelectedIds = [];
+  pendingCandidates = [];
 
   // Show FIT upload zone for new rides only (not editing, not already a FIT import)
   const fitSection = document.getElementById('modal-fit-section');
@@ -2072,30 +2122,35 @@ function openModal(id = null, prefill = null) {
         document.getElementById('no-match-banner').innerHTML = innerHtml;
         noMatchEl.classList.add('visible');
 
-      } else if (cands.length >= 1 && isAutoMatch(cands)) {
-        // Clear top match → auto-accept, show info banner
+      } else if (cands.length >= 1 && isAutoMatch(cands) && significantCandidates(cands).length <= 1) {
+        // Clear single top match → auto-accept, show info banner
         const m = cands[0];
         matchText.innerHTML = `🗺️ Matched to <strong>${escHtml(m.trail.name)}</strong> · <span style="color:var(--muted);font-size:0.85em">${m.matchLabel}</span>`;
         matchBanner.classList.add('visible');
+        pendingNearbyId = m.trail.id;
+        pendingExtraNearbyIds = [];
 
       } else {
-        // Ambiguous (loose match or multiple candidates) → show picker
-        const optionsHtml = cands.map((c, i) => `
+        // Ambiguous, or the ride appears to span multiple trails → multi-select picker
+        pendingCandidates = cands;
+        const significant = significantCandidates(cands).map(c => c.trail.id);
+        pendingSelectedIds = significant.length ? significant : (cands[0] ? [cands[0].trail.id] : []);
+
+        const optionsHtml = cands.map(c => `
           <label class="match-option">
-            <input type="radio" name="trail-match" value="${escHtml(c.trail.id)}"
-              ${i === 0 ? 'checked' : ''}
-              onchange="onMatchPick('${c.trail.id}','${escHtml(c.trail.name).replace(/'/g,"\\'")}','${escHtml(c.trail.state).replace(/'/g,"\\'")}')">
+            <input type="checkbox" value="${escHtml(c.trail.id)}"
+              ${pendingSelectedIds.includes(c.trail.id) ? 'checked' : ''}
+              onchange="toggleMatchCandidate('${c.trail.id}', this.checked)">
             <span class="match-option-text">
               <span class="match-option-name">${escHtml(c.trail.name)}</span>
               <span class="match-dist">${c.matchLabel}</span>
             </span>
           </label>`).join('');
         document.getElementById('match-picker-options').innerHTML = optionsHtml + `
-          <label class="match-option">
-            <input type="radio" name="trail-match" value="" onchange="onMatchPick('','','')">
-            <span class="match-option-text"><span class="match-option-name">None of these — save as custom ride</span></span>
-          </label>`;
+          <div class="match-multi-hint" id="match-multi-hint"></div>
+          <button type="button" class="link-btn" style="margin-top:6px" onclick="clearMatchSelection()">None of these — save as custom ride</button>`;
         matchPicker.classList.add('visible');
+        syncMultiMatchFields();
       }
     }
 
@@ -2123,13 +2178,52 @@ function openModalFromNearby(nearbyId) {
   openModal(null, { name: n.name, state: n.state, miles: n.miles, date: '', fromNearby: true });
 }
 
-// Called when user picks a different trail from the match-picker radio buttons
-function onMatchPick(id, name, state) {
-  pendingNearbyId = id || null;
-  if (name) {
-    document.getElementById('f-name').value = name;
-    document.getElementById('f-state').value = state;
+// Candidates strong enough to be pre-checked as "this ride also covers this trail"
+function significantCandidates(cands) {
+  return cands.filter(c => c.score !== null && c.score >= MULTI_MATCH_MIN_SCORE);
+}
+
+// Called when a checkbox in the multi-select match picker is toggled
+function toggleMatchCandidate(id, checked) {
+  if (checked) {
+    if (!pendingSelectedIds.includes(id)) pendingSelectedIds.push(id);
+  } else {
+    pendingSelectedIds = pendingSelectedIds.filter(x => x !== id);
   }
+  syncMultiMatchFields();
+}
+
+// Recompute the primary trail (nearbyId) + any additional trails (extraNearbyIds)
+// from the currently checked candidates. Primary = best-scoring checked candidate.
+function syncMultiMatchFields() {
+  const selected = pendingCandidates.filter(c => pendingSelectedIds.includes(c.trail.id));
+  const hintEl = document.getElementById('match-multi-hint');
+  if (!selected.length) {
+    pendingNearbyId = null;
+    pendingExtraNearbyIds = [];
+    if (hintEl) hintEl.textContent = '';
+    return;
+  }
+  const [primary, ...rest] = selected; // pendingCandidates is already sorted best-first
+  pendingNearbyId = primary.trail.id;
+  pendingExtraNearbyIds = rest.map(c => c.trail.id);
+  document.getElementById('f-name').value = primary.trail.name;
+  document.getElementById('f-state').value = primary.trail.state;
+  if (hintEl) {
+    hintEl.textContent = selected.length > 1
+      ? `🔗 This ride will be logged on ${selected.length} trails: ${selected.map(c => c.trail.name).join(', ')}`
+      : '';
+  }
+}
+
+// "None of these" — clear all selections and let the user log a fully custom ride
+function clearMatchSelection() {
+  pendingSelectedIds = [];
+  document.querySelectorAll('#match-picker-options input[type="checkbox"]').forEach(cb => cb.checked = false);
+  pendingNearbyId = null;
+  pendingExtraNearbyIds = [];
+  const hintEl = document.getElementById('match-multi-hint');
+  if (hintEl) hintEl.textContent = '';
 }
 
 // Use a trail discovered from OSM to populate the log-ride form
@@ -2172,6 +2266,7 @@ function updateExistingFromFit(trailId) {
   document.getElementById('f-lng').value = '';
   document.getElementById('modal-fit-section').style.display = 'none';
   pendingNearbyId = t.nearbyId || null;
+  pendingExtraNearbyIds = t.extraNearbyIds || [];
   // pendingPolyline and pendingFitFingerprint stay set from parseFit()
 }
 
@@ -2182,6 +2277,9 @@ function closeModal() {
   pendingNearbyId = null;
   pendingFitFingerprint = null;
   pendingFitFile = null;
+  pendingExtraNearbyIds = [];
+  pendingSelectedIds = [];
+  pendingCandidates = [];
   if (previewLayer) { previewLayer.remove(); previewLayer = null; }
   // Advance to next file in a multi-file import batch
   if (fitQueue.length) setTimeout(processNextFit, 150);
@@ -2206,6 +2304,7 @@ function saveTrail() {
     lng: parseFloat(document.getElementById('f-lng').value) || null,
     polyline: pendingPolyline || existing?.polyline || null,
     nearbyId: pendingNearbyId || existing?.nearbyId || null,
+    extraNearbyIds: pendingSelectedIds.length ? pendingExtraNearbyIds : (existing?.extraNearbyIds || []),
     fitFingerprint: pendingFitFingerprint || existing?.fitFingerprint || null,
     fitFile: pendingFitFile || existing?.fitFile || null,
   };
@@ -2214,6 +2313,9 @@ function saveTrail() {
   pendingNearbyId = null;
   pendingFitFingerprint = null;
   pendingFitFile = null;
+  pendingExtraNearbyIds = [];
+  pendingSelectedIds = [];
+  pendingCandidates = [];
   if (previewLayer) { previewLayer.remove(); previewLayer = null; }
 
   if (editingId) {
