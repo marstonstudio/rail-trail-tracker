@@ -484,20 +484,6 @@
     .modal-fit-btn:hover { border-color: #bbb; background: #eee; }
     .modal-fit-hint { font-size: 0.78rem; color: var(--muted); }
 
-    .match-banner {
-      display: none;
-      background: #e8f0fe;
-      border: 1px solid #adc6f7;
-      border-radius: 8px;
-      padding: 10px 13px;
-      font-size: 0.82rem;
-      color: #1a56db;
-      margin-bottom: 16px;
-      gap: 8px;
-      align-items: flex-start;
-    }
-    .match-banner.visible { display: flex; }
-
     /* Duplicate FIT warning */
     .dup-warning {
       display: none;
@@ -779,11 +765,6 @@
         <button class="dup-btn-update" id="dup-btn-update">Update existing ride</button>
         <button class="dup-btn-new" onclick="dismissDupWarning()">Log on a different trail</button>
       </div>
-    </div>
-
-    <div class="match-banner" id="match-banner">
-      <span>🗺️</span>
-      <div id="match-banner-text"></div>
     </div>
 
     <div class="match-picker" id="match-picker">
@@ -1499,15 +1480,22 @@ function readDataMsg(def, pos, view, FIT_EPOCH_MS, SEMI_TO_DEG, sessions, record
 }
 
 // ─── Trail matching ───────────────────────────────────────────────────────────
-// Centroid fallback thresholds (used when no polyline data is available)
-const MATCH_THRESHOLD_MI  = 5;    // max centroid→trail-ref distance for a candidate
-const MATCH_AUTO_MI       = 2;    // centroid auto-accept threshold
+// Centroid fallback threshold (used when no polyline data is available)
+const MATCH_THRESHOLD_MI  = 5;    // base max centroid→trail-ref distance for a candidate
 
 // Overlap-based thresholds (used when polylines are available)
 const MATCH_RADIUS_M      = 150;  // FIT point counts as "on trail" if within this many metres
-const AUTO_MATCH_SCORE    = 0.35; // ≥35% overlap → auto-accept (clear winner)
-const CANDIDATE_MIN_SCORE = 0.05; // ≥5% overlap → show as candidate in picker
 const MULTI_MATCH_MIN_SCORE = 0.15; // ≥15% overlap → pre-checked as "also ridden" in multi-trail picker
+
+// A trail's declared lat/lng is roughly its midpoint, so its actual reach can
+// extend up to half its length away from that point — without this, a longer
+// trail that genuinely overlaps the ride could be excluded from candidacy
+// entirely just because its nominal center is more than a few miles off.
+// Capped so very long trails (50+ mi) don't get pulled in as a candidate from
+// every ride within a wide radius, which would add noise and wasted fetches.
+function candidateDistThresholdMi(trail) {
+  return Math.min(MATCH_THRESHOLD_MI + (trail.miles || 0) / 2, 20);
+}
 const MATCH_PALETTE = ['#e6194B','#4363d8','#f58231','#911eb4','#469990','#f032e6','#9A6324','#3cb44b'];
 
 let matchMapInstance = null;
@@ -1543,6 +1531,13 @@ function renderMatchMap(cands) {
     if (matchMapBoundsPts.length) matchMapInstance.fitBounds(matchMapBoundsPts, { padding: [20, 20], maxZoom: 15 });
   };
 
+  // Cap how many uncached candidates get an eager background fetch — a widened
+  // candidate net (to catch off-center-but-overlapping long trails) shouldn't
+  // turn into a pile of Overpass requests. cands is already sorted with
+  // scored/closer candidates first, so the ones skipped are the least likely.
+  const MAX_EAGER_FETCHES = 6;
+  const toFetch = [];
+
   cands.forEach((c, i) => {
     const color = matchCandidateColors[c.trail.id] || MATCH_PALETTE[i % MATCH_PALETTE.length];
     const trailPts = TRAIL_POLYLINES?.[c.trail.id];
@@ -1554,7 +1549,7 @@ function renderMatchMap(cands) {
       return;
     }
 
-    // No cached geometry yet — show a placeholder dot, then fetch the real path.
+    // No cached geometry yet — show a placeholder dot, then queue a fetch for the real path.
     if (c.trail.lat && c.trail.lng) {
       const marker = L.circleMarker([c.trail.lat, c.trail.lng], { radius: 7, color, fillColor: color, fillOpacity: 0.85, weight: 2 }).addTo(matchMapInstance);
       matchMapLayers.push(marker);
@@ -1562,8 +1557,15 @@ function renderMatchMap(cands) {
       matchMapBoundsPts.push([c.trail.lat, c.trail.lng]);
     }
 
-    fetchTrailPolylineDirect(c.trail).then(pts => {
-      if (!pts || thisRender !== matchMapRenderToken) return; // picker moved on since this fetch started
+    if (toFetch.length < MAX_EAGER_FETCHES) toFetch.push({ c, color });
+  });
+
+  // Fetch sequentially, not concurrently — the free Overpass instance reliably
+  // fails/throttles when hit with several simultaneous requests from one client.
+  (async () => {
+    for (const { c, color } of toFetch) {
+      const pts = await fetchTrailPolylineDirect(c.trail);
+      if (!pts || thisRender !== matchMapRenderToken) continue; // picker moved on since this fetch started
       const old = layerByTrailId[c.trail.id];
       if (old) { old.remove(); matchMapLayers = matchMapLayers.filter(l => l !== old); }
       const line = L.polyline(pts, { color, weight: 4, opacity: 0.75, dashArray: '5 5' }).addTo(matchMapInstance);
@@ -1590,8 +1592,8 @@ function renderMatchMap(cands) {
           syncMultiMatchFields();
         }
       }
-    });
-  });
+    }
+  })();
 
   setTimeout(fitToBounds, 60);
 }
@@ -1820,9 +1822,29 @@ function trackCentroid(pts) {
   ];
 }
 
+// Distance in meters from point p to the line segment a-b, using a flat
+// equirectangular approximation (fine at the few-hundred-meter scale we
+// care about here). Falls back to haversineM to a/b if the segment is a point.
+function pointToSegmentM(p, a, b) {
+  const lat0 = p[0] * Math.PI / 180;
+  const mPerDegLat = 111320;
+  const mPerDegLng = 111320 * Math.cos(lat0);
+  const toXY = (pt) => [(pt[1] - p[1]) * mPerDegLng, (pt[0] - p[0]) * mPerDegLat];
+  const [ax, ay] = toXY(a), [bx, by] = toXY(b);
+  const dx = bx - ax, dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(ax, ay);
+  let t = (-ax * dx + -ay * dy) / lenSq; // projection of (p - a) onto (b - a), p is origin here
+  t = Math.max(0, Math.min(1, t));
+  const cx = ax + t * dx, cy = ay + t * dy;
+  return Math.hypot(cx, cy);
+}
+
 /**
  * Compute what fraction of (sampled) FIT track points lie within MATCH_RADIUS_M
- * of any point on the stored trail polyline.
+ * of the trail's path — measured against the nearest point on each segment of
+ * the trail polyline (not just its vertices), so sparse/downsampled trail
+ * geometry doesn't cause real overlap to be missed between distant vertices.
  * Returns 0–1, or null if trailPts is missing / only a single reference point.
  */
 function overlapScore(fitPts, trailPts) {
@@ -1833,8 +1855,8 @@ function overlapScore(fitPts, trailPts) {
   if (!sample.length) return null;
   let hits = 0;
   for (const fp of sample) {
-    for (const tp of trailPts) {
-      if (haversineM(fp[0], fp[1], tp[0], tp[1]) < MATCH_RADIUS_M) { hits++; break; }
+    for (let i = 0; i < trailPts.length - 1; i++) {
+      if (pointToSegmentM(fp, trailPts[i], trailPts[i + 1]) < MATCH_RADIUS_M) { hits++; break; }
     }
   }
   return hits / sample.length;
@@ -1862,9 +1884,12 @@ function findAllNearbyMatches(polyline) {
   });
 
   if (TRAIL_POLYLINES) {
-    // Overlap mode: filter by score (or fall back to centroid for single-pt entries)
+    // Overlap mode: any real overlap at all counts as a candidate (even a sliver),
+    // so it's never silently hidden from the picker. Unscored trails fall back to
+    // a centroid-distance check, scaled by trail length (see candidateDistThresholdMi)
+    // so a long trail isn't excluded just because its declared midpoint is far off.
     return candidates
-      .filter(c => c.score !== null ? c.score >= CANDIDATE_MIN_SCORE : c.distMi < MATCH_THRESHOLD_MI)
+      .filter(c => c.score !== null ? c.score > 0 : c.distMi < candidateDistThresholdMi(c.trail))
       .sort((a, b) => {
         // Sort: scored trails by score desc, then unscored by distance
         const sa = a.score ?? -1, sb = b.score ?? -1;
@@ -1873,28 +1898,8 @@ function findAllNearbyMatches(polyline) {
   } else {
     // Centroid-only mode (polylines not yet loaded)
     return candidates
-      .filter(c => c.distMi < MATCH_THRESHOLD_MI)
+      .filter(c => c.distMi < candidateDistThresholdMi(c.trail))
       .sort((a, b) => a.distMi - b.distMi);
-  }
-}
-
-/**
- * Returns true if the top candidate is a clear auto-accept match.
- * Overlap mode: top score ≥ AUTO_MATCH_SCORE AND well ahead of runner-up.
- * Centroid fallback: single candidate within MATCH_AUTO_MI.
- */
-function isAutoMatch(cands) {
-  if (!cands.length) return false;
-  const top = cands[0];
-  if (top.score !== null) {
-    // Overlap mode: strong enough AND either only candidate or well ahead of #2
-    if (top.score < AUTO_MATCH_SCORE) return false;
-    if (cands.length === 1) return true;
-    const runnerUp = cands[1].score ?? 0;
-    return (top.score - runnerUp) >= 0.15; // clear winner by 15 pp
-  } else {
-    // Centroid fallback
-    return cands.length === 1 && top.distMi < MATCH_AUTO_MI;
   }
 }
 
@@ -2207,8 +2212,6 @@ function openModal(id = null, prefill = null) {
   editingId = id;
   const banner      = document.getElementById('import-banner');
   const bannerText  = document.getElementById('import-banner-text');
-  const matchBanner = document.getElementById('match-banner');
-  const matchText   = document.getElementById('match-banner-text');
   const fitNote     = document.getElementById('fit-location-note');
   const locGroup    = document.getElementById('location-group');
   const dupWarn     = document.getElementById('dup-warning');
@@ -2226,7 +2229,6 @@ function openModal(id = null, prefill = null) {
 
   // Reset all banners
   banner.classList.remove('visible');
-  matchBanner.classList.remove('visible');
   dupWarn.classList.remove('visible');
   matchPicker.classList.remove('visible');
   noMatchEl.classList.remove('visible');
@@ -2311,16 +2313,10 @@ function openModal(id = null, prefill = null) {
         document.getElementById('no-match-banner').innerHTML = innerHtml;
         noMatchEl.classList.add('visible');
 
-      } else if (cands.length >= 1 && isAutoMatch(cands) && significantCandidates(cands).length <= 1) {
-        // Clear single top match → auto-accept, show info banner
-        const m = cands[0];
-        matchText.innerHTML = `🗺️ Matched to <strong>${escHtml(m.trail.name)}</strong> · <span style="color:var(--muted);font-size:0.85em">${m.matchLabel}</span>`;
-        matchBanner.classList.add('visible');
-        pendingNearbyId = m.trail.id;
-        pendingExtraNearbyIds = [];
-
       } else {
-        // Ambiguous, or the ride appears to span multiple trails → multi-select picker
+        // Always show the route + trail overlap map and let the user confirm the
+        // match(es) — even a clear single top candidate is pre-checked here rather
+        // than auto-accepted silently, so you can visually verify overlap first.
         pendingCandidates = cands;
         matchCandidateColors = {};
         cands.forEach((c, i) => { matchCandidateColors[c.trail.id] = MATCH_PALETTE[i % MATCH_PALETTE.length]; });
