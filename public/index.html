@@ -442,7 +442,9 @@
       max-height: 90vh;
       overflow-y: auto;
       box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+      transition: width 0.15s;
     }
+    .modal.modal-wide { width: 680px; }
 
     .modal h2 { font-size: 1.05rem; font-weight: 700; margin-bottom: 20px; }
 
@@ -543,6 +545,18 @@
     .match-multi-hint {
       margin-top: 8px; padding-top: 8px; border-top: 1px solid #cdddf7;
       font-size: 0.78rem; color: #1a3a6b; font-weight: 600;
+    }
+    .match-map {
+      height: 260px; width: 100%; border-radius: 8px; margin-bottom: 10px;
+      border: 1px solid #adc6f7; background: #e3ecfb;
+    }
+    .match-color-dot {
+      display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+      flex-shrink: 0; margin-top: 4px;
+    }
+    .match-map-legend {
+      display: flex; align-items: center; gap: 5px; font-size: 0.72rem;
+      color: #1a3a6b; margin-bottom: 6px;
     }
 
     /* No-match banner + search links */
@@ -773,7 +787,8 @@
     </div>
 
     <div class="match-picker" id="match-picker">
-      <div class="match-picker-label">🗺️ Select the trail this ride matches:</div>
+      <div class="match-picker-label">🗺️ Select the trail(s) this ride matches:</div>
+      <div class="match-map" id="match-map"></div>
       <div id="match-picker-options"></div>
     </div>
 
@@ -1491,6 +1506,49 @@ const MATCH_RADIUS_M      = 150;  // FIT point counts as "on trail" if within th
 const AUTO_MATCH_SCORE    = 0.35; // ≥35% overlap → auto-accept (clear winner)
 const CANDIDATE_MIN_SCORE = 0.05; // ≥5% overlap → show as candidate in picker
 const MULTI_MATCH_MIN_SCORE = 0.15; // ≥15% overlap → pre-checked as "also ridden" in multi-trail picker
+const MATCH_PALETTE = ['#e6194B','#4363d8','#f58231','#911eb4','#469990','#f032e6','#9A6324','#3cb44b'];
+
+let matchMapInstance = null;
+let matchMapLayers = [];
+
+// Render the ridden route + candidate trail overlays inside the match picker,
+// so it's clear at a glance which trails the FIT track actually overlaps.
+function renderMatchMap(cands) {
+  const mapEl = document.getElementById('match-map');
+  if (!mapEl) return;
+  if (!matchMapInstance) {
+    matchMapInstance = L.map('match-map', { attributionControl: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(matchMapInstance);
+  }
+  matchMapLayers.forEach(l => l.remove());
+  matchMapLayers = [];
+
+  const bounds = [];
+  if (pendingPolyline && pendingPolyline.length > 1) {
+    const rideLine = L.polyline(pendingPolyline, { color: '#2d7a3a', weight: 5, opacity: 0.9 }).addTo(matchMapInstance);
+    matchMapLayers.push(rideLine);
+    bounds.push(...pendingPolyline);
+  }
+
+  cands.forEach((c, i) => {
+    const color = MATCH_PALETTE[i % MATCH_PALETTE.length];
+    const trailPts = TRAIL_POLYLINES?.[c.trail.id];
+    if (trailPts && trailPts.length > 1) {
+      const line = L.polyline(trailPts, { color, weight: 4, opacity: 0.65, dashArray: '5 5' }).addTo(matchMapInstance);
+      matchMapLayers.push(line);
+      bounds.push(...trailPts);
+    } else if (c.trail.lat && c.trail.lng) {
+      const marker = L.circleMarker([c.trail.lat, c.trail.lng], { radius: 7, color, fillColor: color, fillOpacity: 0.85, weight: 2 }).addTo(matchMapInstance);
+      matchMapLayers.push(marker);
+      bounds.push([c.trail.lat, c.trail.lng]);
+    }
+  });
+
+  setTimeout(() => {
+    matchMapInstance.invalidateSize();
+    if (bounds.length) matchMapInstance.fitBounds(bounds, { padding: [20, 20], maxZoom: 15 });
+  }, 60);
+}
 const DISCOVER_MIN_SCORE  = 0.20; // ≥20% overlap → surface as a discovered trail suggestion
 
 // Polyline cache: { [nearbyTrailId]: [[lat,lng],...] }  populated on-demand via Overpass.
@@ -2046,6 +2104,7 @@ function openModal(id = null, prefill = null) {
   noMatchEl.classList.remove('visible');
   fitNote.style.display = 'none';
   locGroup.style.display = 'block';
+  document.querySelector('.modal').classList.remove('modal-wide');
 
   // Store fingerprint for saving later
   pendingFitFingerprint = prefill?.fitFingerprint || null;
@@ -2136,21 +2195,26 @@ function openModal(id = null, prefill = null) {
         const significant = significantCandidates(cands).map(c => c.trail.id);
         pendingSelectedIds = significant.length ? significant : (cands[0] ? [cands[0].trail.id] : []);
 
-        const optionsHtml = cands.map(c => `
+        const optionsHtml = cands.map((c, i) => `
           <label class="match-option">
             <input type="checkbox" value="${escHtml(c.trail.id)}"
               ${pendingSelectedIds.includes(c.trail.id) ? 'checked' : ''}
               onchange="toggleMatchCandidate('${c.trail.id}', this.checked)">
+            <span class="match-color-dot" style="background:${MATCH_PALETTE[i % MATCH_PALETTE.length]}"></span>
             <span class="match-option-text">
               <span class="match-option-name">${escHtml(c.trail.name)}</span>
               <span class="match-dist">${c.matchLabel}</span>
             </span>
           </label>`).join('');
-        document.getElementById('match-picker-options').innerHTML = optionsHtml + `
+        document.getElementById('match-picker-options').innerHTML = `
+          <div class="match-map-legend"><span class="match-color-dot" style="background:#2d7a3a"></span> Your ride &nbsp;·&nbsp; dashed lines = candidate trails</div>` +
+          optionsHtml + `
           <div class="match-multi-hint" id="match-multi-hint"></div>
           <button type="button" class="link-btn" style="margin-top:6px" onclick="clearMatchSelection()">None of these — save as custom ride</button>`;
         matchPicker.classList.add('visible');
+        document.querySelector('.modal').classList.add('modal-wide');
         syncMultiMatchFields();
+        renderMatchMap(cands);
       }
     }
 
