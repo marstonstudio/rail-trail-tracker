@@ -447,6 +447,13 @@
     .modal.modal-wide { width: 680px; }
 
     .modal h2 { font-size: 1.05rem; font-weight: 700; margin-bottom: 20px; }
+    .modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .modal-close-btn {
+      background: none; border: none; cursor: pointer; padding: 2px 4px;
+      font-size: 1.3rem; line-height: 1; color: var(--muted); border-radius: 6px;
+      flex-shrink: 0;
+    }
+    .modal-close-btn:hover { background: var(--bg); color: var(--text); }
 
     .import-banner {
       display: none;
@@ -756,7 +763,10 @@
 <!-- Add / Edit Modal -->
 <div class="modal-overlay" id="modal-overlay" onclick="closeModalOnOverlay(event)">
   <div class="modal">
-    <h2 id="modal-title">Log a Ride</h2>
+    <div class="modal-header">
+      <h2 id="modal-title">Log a Ride</h2>
+      <button type="button" class="modal-close-btn" onclick="closeModal()" aria-label="Close">✕</button>
+    </div>
 
     <div class="dup-warning" id="dup-warning">
       <div class="dup-warning-title">⚠️ Already imported</div>
@@ -858,12 +868,12 @@
 // ─── Nearby trail data (researched, within 100 mi of Concord MA) ──────────────
 const NEARBY_TRAILS = [
   // ── 0–15 mi from Concord MA ──────────────────────────────────────────────────
-  { id:'n01', name:'Bruce Freeman Rail Trail',              state:'MA',    miles:20,   distMi:5,  surface:'Paved',         lat:42.399, lng:-71.471, url:'https://www.traillink.com/trail/bruce-freeman-rail-trail/',                        desc:'Lowell to Framingham through Concord, Acton & Sudbury' },
-  { id:'n97', name:'Reformatory Branch Trail',              state:'MA',    miles:3.9,  distMi:3,  surface:'Dirt/Gravel',   lat:42.478, lng:-71.235, url:'https://www.traillink.com/trail/reformatory-branch-trail/',                       desc:'Former Boston & Lowell Railroad branch linking Bedford Depot Park to Concord\'s Old North Bridge through wildlife refuges' },
+  { id:'n01', name:'Bruce Freeman Rail Trail',              state:'MA',    miles:20,   distMi:5,  surface:'Paved',         lat:42.5077, lng:-71.4124, url:'https://www.traillink.com/trail/bruce-freeman-rail-trail/',                        desc:'Lowell to Framingham through Concord, Acton & Sudbury' },
+  { id:'n97', name:'Reformatory Branch Trail',              state:'MA',    miles:3.9,  distMi:3,  surface:'Dirt/Gravel',   lat:42.4843, lng:-71.2921, url:'https://www.traillink.com/trail/reformatory-branch-trail/',                       desc:'Former Boston & Lowell Railroad branch linking Bedford Depot Park to Concord\'s Old North Bridge through wildlife refuges' },
   { id:'n02', name:'Minuteman Commuter Bikeway',             state:'MA',    miles:10.1, distMi:5,  surface:'Paved',         lat:42.476, lng:-71.257, url:'https://www.traillink.com/trail/minuteman-commuter-bikeway/',                       desc:'Bedford to Alewife through Lexington & Arlington' },
   { id:'n95', name:'Somerville Community Path',              state:'MA',    miles:3.2,  distMi:8,  surface:'Paved',          lat:42.395, lng:-71.118, url:'https://www.traillink.com/trail/somerville-community-path/',                   desc:'Former Fitchburg Cutoff corridor linking Alewife to East Cambridge through Davis Square with direct access to Green and Red Line stations' },
   { id:'n03', name:'Assabet River Rail Trail',               state:'MA',    miles:12,   distMi:12, surface:'Paved',         lat:42.370, lng:-71.553, url:'https://www.traillink.com/trail/assabet-river-rail-trail/',                        desc:'Marlborough through Hudson, Stow, Maynard & Acton' },
-  { id:'n04', name:'Northern Strand Community Trail',        state:'MA',    miles:10,   distMi:14, surface:'Paved',         lat:42.450, lng:-71.055, url:'https://www.traillink.com/trail/northern-strand-community-trail/',                  desc:'Everett to Lynn through Malden, Revere & Saugus — bike to the sea' },
+  { id:'n04', name:'Northern Strand Community Trail',        state:'MA',    miles:10,   distMi:14, surface:'Paved',         lat:42.4307, lng:-71.0431, url:'https://www.traillink.com/trail/northern-strand-community-trail/',                  desc:'Everett to Lynn through Malden, Revere & Saugus — bike to the sea' },
   { id:'n05', name:'Tri-Community Greenway',                 state:'MA',    miles:6.5,  distMi:15, surface:'Paved',         lat:42.476, lng:-71.133, url:'https://www.traillink.com/trail/tri-community-greenway/',                          desc:'Stoneham to Woburn through Winchester' },
   { id:'n06', name:'Wakefield-Lynnfield Rail Trail',         state:'MA',    miles:5,    distMi:15, surface:'Paved',         lat:42.510, lng:-71.062, url:'https://www.traillink.com/trail/wakefield-lynnfield-rail-trail/',                   desc:'Wakefield to Lynnfield along a former railroad corridor' },
   { id:'n61', name:'Cochituate Rail Trail',                  state:'MA',    miles:4.5,  distMi:15, surface:'Paved',         lat:42.295, lng:-71.362, url:'https://www.traillink.com/trail/cochituate-rail-trail/',                          desc:'Natick to Framingham through Saxonville along the former Old Colony Railroad' },
@@ -1036,7 +1046,8 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 const mapLayers = {};     // trail id → ridden layer
-const nearbyMarkers = {}; // nearby id → blue marker
+const nearbyMarkers = {}; // nearby id → blue marker or polyline
+const nearbyIsLine = {};  // nearby id → true once its marker has become a real polyline
 
 function riddenIcon() {
   return L.divIcon({
@@ -1070,6 +1081,7 @@ function buildRiddenPopup(t) {
 function buildNearbyPopup(n) {
   const ridden = riddenForNearby(n.id);
   const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${n.lat},${n.lng}`;
+  const hasLine = !!TRAIL_POLYLINES?.[n.id]?.length;
   return `<div class="lf-popup-name">${escHtml(n.name)}</div>
     <div class="lf-popup-meta">
       ${n.state} · ${n.miles} mi · ${n.distMi} mi from Concord<br>
@@ -1080,7 +1092,30 @@ function buildNearbyPopup(n) {
       <a href="${n.url}" target="_blank" rel="noopener">TrailLink ↗</a>
       <a href="${gmapsUrl}" target="_blank" rel="noopener">Maps ↗</a>
     </div>
+    ${!hasLine ? `<button class="lf-popup-log" id="loadline-${n.id}" onclick="forceLoadTrailLine('${n.id}')">🔄 Load trail path</button>` : ''}
     ${!ridden ? `<button class="lf-popup-log" onclick="logRideFromNearby('${n.id}')">+ Log a Ride</button>` : ''}`;
+}
+
+// Force-(re)fetch one trail's real geometry, bypassing the "already
+// attempted" guard — called from the "Load trail path" popup button, so a
+// user can retry a trail that failed during the background pass, or jump
+// the queue for one they specifically want to see right now.
+async function forceLoadTrailLine(nearbyId) {
+  const n = NEARBY_TRAILS.find(x => x.id === nearbyId);
+  if (!n) return;
+  const btn = document.getElementById(`loadline-${nearbyId}`);
+  if (btn) { btn.textContent = 'Loading…'; btn.disabled = true; }
+  attemptedDirectFetch.delete(nearbyId);
+  const pts = await fetchTrailPolylineDirect(n);
+  refreshNearbyMarkers();
+  if (!pts) {
+    nearbyMarkers[nearbyId]?.openPopup();
+    if (lastDirectFetchWasRateLimited) {
+      alert(`The map data service is rate-limiting requests right now. Wait a minute or two and try "Load trail path" again for ${n.name}.`);
+    } else {
+      alert(`Couldn't find a matching trail path in the map data for ${n.name}. You can try again later.`);
+    }
+  }
 }
 
 function riddenForNearby(nearbyId) {
@@ -1100,27 +1135,47 @@ function addRiddenToMap(t) {
   if (layer) mapLayers[t.id] = layer;
 }
 
+const NEARBY_LINE_COLOR = '#2563b0'; // matches --blue
+
 function refreshNearbyMarkers() {
   // Remove stale markers
   Object.keys(nearbyMarkers).forEach(id => {
-    if (!NEARBY_TRAILS.find(n => n.id === id)) { nearbyMarkers[id].remove(); delete nearbyMarkers[id]; }
+    if (!NEARBY_TRAILS.find(n => n.id === id)) { nearbyMarkers[id].remove(); delete nearbyMarkers[id]; delete nearbyIsLine[id]; }
   });
 
   NEARBY_TRAILS.forEach(n => {
     const isRidden = !!riddenForNearby(n.id);
+    const segments = TRAIL_POLYLINES?.[n.id]; // real trail path, once fetched
+    const wantLine = segments && segments.length > 0;
+
+    // Swap a placeholder dot for the real trail line once its geometry is
+    // available (or vice versa if it somehow became unavailable) — can't
+    // mutate a marker into a polyline, so replace the layer outright.
+    let wasOpen = false;
+    if (nearbyMarkers[n.id] && nearbyIsLine[n.id] !== wantLine) {
+      wasOpen = nearbyMarkers[n.id].isPopupOpen();
+      nearbyMarkers[n.id].remove();
+      delete nearbyMarkers[n.id];
+    }
+
     if (!nearbyMarkers[n.id]) {
-      const m = L.marker([n.lat, n.lng], { icon: nearbyIcon(), zIndexOffset: -10 })
-        .addTo(map)
-        .bindPopup(buildNearbyPopup(n), { maxWidth: 220 });
-      nearbyMarkers[n.id] = m;
+      const layer = wantLine
+        ? L.polyline(segments, { color: NEARBY_LINE_COLOR, weight: 5, opacity: 0.9, lineCap: 'round' })
+        : L.marker([n.lat, n.lng], { icon: nearbyIcon(), zIndexOffset: -10 });
+      layer.addTo(map).bindPopup(buildNearbyPopup(n), { maxWidth: 220 });
+      nearbyMarkers[n.id] = layer;
+      nearbyIsLine[n.id] = wantLine;
+      if (wasOpen) layer.openPopup();
     } else {
       nearbyMarkers[n.id].setPopupContent(buildNearbyPopup(n));
     }
-    // Show/hide based on ridden status
-    if (isRidden) {
-      nearbyMarkers[n.id].setOpacity(0.25);
+
+    // Dim once ridden — the actual ridden GPS track (green) draws on top separately.
+    const layer = nearbyMarkers[n.id];
+    if (nearbyIsLine[n.id]) {
+      layer.setStyle({ opacity: isRidden ? 0.35 : 0.9 });
     } else {
-      nearbyMarkers[n.id].setOpacity(1);
+      layer.setOpacity(isRidden ? 0.25 : 1);
     }
   });
 }
@@ -1134,8 +1189,10 @@ function refreshMap() {
   Object.keys(mapLayers).forEach(id => {
     if (!trails.find(t => t.id === id)) removeLayer(mapLayers, id);
   });
-  trails.forEach(t => addRiddenToMap(t));
+  // Nearby (blue, unridden-portion) lines must draw first so the actual
+  // ridden GPS track (green) layers on top of them, not underneath.
   refreshNearbyMarkers();
+  trails.forEach(t => addRiddenToMap(t));
 }
 
 function focusRidden(id) {
@@ -1161,6 +1218,18 @@ function focusNearby(id) {
   }
   map.setView([n.lat, n.lng], 12, { animate:true });
   nearbyMarkers[id]?.openPopup();
+}
+
+// Progressively fetch each nearby trail's real path in the background (one at
+// a time — Overpass reliably fails/throttles on concurrent requests) so the
+// map can show its actual route as a blue line instead of a placeholder dot.
+// Runs once per page load; already-cached/attempted trails are skipped.
+async function fetchAllNearbyTrailLines() {
+  for (const n of NEARBY_TRAILS) {
+    if (TRAIL_POLYLINES?.[n.id]?.length > 0) continue;
+    await fetchTrailPolylineDirect(n);
+    refreshNearbyMarkers();
+  }
 }
 
 // Called from popup button
@@ -1545,12 +1614,12 @@ function renderMatchMap(cands) {
 
   cands.forEach((c, i) => {
     const color = matchCandidateColors[c.trail.id] || MATCH_PALETTE[i % MATCH_PALETTE.length];
-    const trailPts = TRAIL_POLYLINES?.[c.trail.id];
-    if (trailPts && trailPts.length > 1) {
-      const line = L.polyline(trailPts, { color, weight: 4, opacity: 0.75, dashArray: '5 5' }).addTo(matchMapInstance);
+    const trailSegments = TRAIL_POLYLINES?.[c.trail.id]; // array of disconnected point-arrays
+    if (trailSegments && trailSegments.length > 0) {
+      const line = L.polyline(trailSegments, { color, weight: 4, opacity: 0.75, dashArray: '5 5' }).addTo(matchMapInstance);
       matchMapLayers.push(line);
       layerByTrailId[c.trail.id] = line;
-      matchMapBoundsPts.push(...trailPts);
+      matchMapBoundsPts.push(...trailSegments.flat());
       return;
     }
 
@@ -1569,21 +1638,21 @@ function renderMatchMap(cands) {
   // fails/throttles when hit with several simultaneous requests from one client.
   (async () => {
     for (const { c, color } of toFetch) {
-      const pts = await fetchTrailPolylineDirect(c.trail);
-      if (!pts || thisRender !== matchMapRenderToken) continue; // picker moved on since this fetch started
+      const segments = await fetchTrailPolylineDirect(c.trail); // array of disconnected point-arrays
+      if (!segments || thisRender !== matchMapRenderToken) continue; // picker moved on since this fetch started
       const old = layerByTrailId[c.trail.id];
       if (old) { old.remove(); matchMapLayers = matchMapLayers.filter(l => l !== old); }
-      const line = L.polyline(pts, { color, weight: 4, opacity: 0.75, dashArray: '5 5' }).addTo(matchMapInstance);
+      const line = L.polyline(segments, { color, weight: 4, opacity: 0.75, dashArray: '5 5' }).addTo(matchMapInstance);
       matchMapLayers.push(line);
       layerByTrailId[c.trail.id] = line;
-      matchMapBoundsPts.push(...pts);
+      matchMapBoundsPts.push(...segments.flat());
       fitToBounds();
 
       // Feed the newly-discovered overlap back into the candidate list so ranking
       // (and which trail is "primary") reflects real overlap, not just the
       // distance-from-center fallback that was used before this fetch resolved.
       if (pendingPolyline && pendingCandidates.length) {
-        const score = overlapScore(pendingPolyline, pts);
+        const score = overlapScore(pendingPolyline, segments);
         const cand = pendingCandidates.find(x => x.trail.id === c.trail.id);
         if (cand && score !== null) {
           cand.score = score;
@@ -1604,20 +1673,67 @@ function renderMatchMap(cands) {
 }
 const DISCOVER_MIN_SCORE  = 0.20; // ≥20% overlap → surface as a discovered trail suggestion
 
-// Polyline cache: { [nearbyTrailId]: [[lat,lng],...] }  populated on-demand via Overpass.
+// Polyline cache: { [nearbyTrailId]: [[[lat,lng],...],...] }  populated
+// on-demand via Overpass, hydrated from the server's persistent cache at
+// startup so the (slow) Overpass lookups only ever need to happen once.
 let TRAIL_POLYLINES = null;
 // OSM trails found near the current FIT track that aren't in NEARBY_TRAILS.
 let pendingDiscovered = [];
 // Set of quantised bbox keys we've already queried this session (avoid re-fetching).
 const fetchedBboxKeys = new Set();
 
+// Bump this whenever the trail-matching/name-scoring logic changes in a way
+// that could change which OSM geometry gets attributed to a trail (e.g. the
+// NAME_STOP word list, distance sanity checks, scoring thresholds). Cached
+// entries stamped with an older version are treated as stale and silently
+// re-fetched — no manual cache-clearing needed on deploy.
+const TRAIL_GEOM_LOGIC_VERSION = 2; // v2: removed river/creek/lake/pond from NAME_STOP
+
+// Load every trail's previously-cached geometry from the server in one request.
+// Entries cached under an older matching-logic version are skipped (left
+// uncached) so they naturally get re-fetched with current logic instead of
+// serving out-of-date data forever.
+async function loadTrailGeometryCache() {
+  try {
+    const res = await fetch('/api/trail-geometry');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!TRAIL_POLYLINES) TRAIL_POLYLINES = {};
+    for (const [id, entry] of Object.entries(data)) {
+      if (entry && entry.version === TRAIL_GEOM_LOGIC_VERSION && Array.isArray(entry.segments)) {
+        TRAIL_POLYLINES[id] = entry.segments;
+      }
+      // else: stale (old/legacy format, or older logic version) — left
+      // uncached, so fetchAllNearbyTrailLines/fetchTrailPolylineDirect will
+      // re-fetch and overwrite it with a freshly-versioned entry.
+    }
+  } catch (e) { console.warn('Could not load trail geometry cache:', e.message); }
+}
+
+// Persist a trail's fetched geometry server-side so future page loads (by
+// anyone) don't need to re-fetch it from Overpass. Fire-and-forget.
+async function persistTrailGeometry(trailId, segments) {
+  try {
+    await fetch(`/api/trail-geometry/${trailId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version: TRAIL_GEOM_LOGIC_VERSION, segments }),
+    });
+  } catch (e) { console.warn('Could not persist trail geometry:', e.message); }
+}
+
 const OVERPASS_URL        = 'https://overpass-api.de/api/interpreter';
 const OVERPASS_TIMEOUT_MS = 12000;
 const MAX_CACHED_PTS      = 300;
 
 // Stop-words excluded when comparing trail names.
+// Deliberately excludes geographically-distinctive words like river/creek/lake/pond —
+// those are often the ONLY thing telling two similarly-generic trail names apart
+// (e.g. "Nashua River Rail Trail" vs the unrelated "Nashua Acton & Boston Railroad
+// Trail" — stripping "river" left just "nashua", a single word both names share,
+// which caused an unrelated trail 16 miles away to be merged in as a false match).
 const NAME_STOP = new Set(['rail','trail','bikeway','greenway','path','the','and','of','in',
-                            'to','a','an','state','park','river','creek','lake','pond',
+                            'to','a','an','state','park',
                             'road','street','recreational','heritage','community','linear']);
 
 function nameMatchScore(osmName, trailName) {
@@ -1695,8 +1811,11 @@ out geom qt;`;
       }
 
       if (bestId) {
+        // Push as its own segment — never merge with other ways' points, which
+        // would draw a phantom straight line across the gap between two
+        // disconnected pieces of the trail (and corrupt overlap scoring).
         if (!accum[bestId]) accum[bestId] = [];
-        accum[bestId].push(...pts);
+        accum[bestId].push(pts);
       } else {
         // Unknown trail — accumulate for discovery
         const key = osmName.toLowerCase();
@@ -1705,11 +1824,13 @@ out geom qt;`;
       }
     }
 
-    // Downsample and store known-trail polylines
-    for (const [id, pts] of Object.entries(accum)) {
-      if (pts.length < 4) continue;
-      const step = Math.max(1, Math.ceil(pts.length / MAX_CACHED_PTS));
-      TRAIL_POLYLINES[id] = pts.filter((_, i) => i % step === 0);
+    // Downsample and store known-trail polylines (each trail id → array of
+    // disconnected segments, i.e. a MultiLineString)
+    for (const [id, segments] of Object.entries(accum)) {
+      const total = segments.reduce((s, seg) => s + seg.length, 0);
+      if (total < 4) continue;
+      TRAIL_POLYLINES[id] = downsampleSegments(segments, MAX_CACHED_PTS);
+      persistTrailGeometry(id, TRAIL_POLYLINES[id]);
     }
 
     // Score unknown trails against the FIT track and surface the best ones
@@ -1737,6 +1858,8 @@ const attemptedDirectFetch = new Set();
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// Returns { segments, rateLimited } — rateLimited is true specifically on an
+// HTTP 429, so callers can back off longer than for a generic/transient failure.
 async function fetchTrailPolylineDirectAttempt(trail) {
   // Bbox sized roughly to the trail's own length (longer trails need a wider search area).
   const buf = Math.min(0.6, Math.max(0.06, (trail.miles || 5) / 60));
@@ -1753,35 +1876,40 @@ async function fetchTrailPolylineDirectAttempt(trail) {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
     clearTimeout(timer);
-    if (!resp.ok) return null;
+    if (resp.status === 429) return { segments: null, rateLimited: true };
+    if (!resp.ok) return { segments: null, rateLimited: false };
     const json = await resp.json();
 
     const namesToCheck = [trail.name, ...(trail.osmNames || [])];
-    const groups = {}; // osmName → { score, pts }
+    const groups = {}; // osmName → { score, segments: [][] }
     for (const el of (json.elements || [])) {
       if (!el.geometry || !el.tags?.name) continue;
       let score = 0;
       for (const n of namesToCheck) score = Math.max(score, nameMatchScore(el.tags.name, n));
       if (score < 0.35) continue; // looser than the bbox-wide scan — we know exactly which trail we want
-      if (!groups[el.tags.name]) groups[el.tags.name] = { score, pts: [] };
-      groups[el.tags.name].pts.push(...el.geometry.map(g => [g.lat, g.lon]));
+      if (!groups[el.tags.name]) groups[el.tags.name] = { score, segments: [] };
+      // Push as its own segment — never merge with other ways' points, which
+      // would draw a phantom straight line across the gap between two
+      // disconnected pieces of the trail (and corrupt overlap scoring).
+      groups[el.tags.name].segments.push(el.geometry.map(g => [g.lat, g.lon]));
     }
 
+    const totalPts = g => g.segments.reduce((s, seg) => s + seg.length, 0);
     let best = null;
     for (const g of Object.values(groups)) {
-      if (!best || g.score > best.score || (g.score === best.score && g.pts.length > best.pts.length)) best = g;
+      if (!best || g.score > best.score || (g.score === best.score && totalPts(g) > totalPts(best))) best = g;
     }
-    if (best && best.pts.length >= 4) {
+    if (best && totalPts(best) >= 4) {
       if (!TRAIL_POLYLINES) TRAIL_POLYLINES = {};
-      const step = Math.max(1, Math.ceil(best.pts.length / MAX_CACHED_PTS));
-      TRAIL_POLYLINES[trail.id] = best.pts.filter((_, i) => i % step === 0);
-      return TRAIL_POLYLINES[trail.id];
+      TRAIL_POLYLINES[trail.id] = downsampleSegments(best.segments, MAX_CACHED_PTS);
+      persistTrailGeometry(trail.id, TRAIL_POLYLINES[trail.id]);
+      return { segments: TRAIL_POLYLINES[trail.id], rateLimited: false };
     }
   } catch (e) {
     clearTimeout(timer);
     if (e.name !== 'AbortError') console.debug('Direct trail fetch failed for', trail.name, e.message);
   }
-  return null;
+  return { segments: null, rateLimited: false };
 }
 
 /**
@@ -1789,19 +1917,28 @@ async function fetchTrailPolylineDirectAttempt(trail) {
  * for use in the match-picker map when the bbox-wide scan (fetchPolylinesNearTrack)
  * didn't turn up a confident name match for it. Looser name-match threshold since
  * we're searching for one specific known trail, not disambiguating among many.
- * Retries once after a short delay — the public Overpass instance sometimes
- * fails/times out a request that lands right after the much larger bbox-wide scan.
+ * Retries once — after a short delay normally, or a longer one specifically on a
+ * 429 (Overpass's free instance rate-limits fairly aggressively under heavy use,
+ * e.g. the initial background load of many trails).
  */
+// Set right before fetchTrailPolylineDirect returns a failure, so a caller
+// that needs to know *why* (e.g. to show a specific error message) can check
+// it immediately after awaiting, without changing the function's return
+// contract for the other callers that just treat null as "no line yet".
+let lastDirectFetchWasRateLimited = false;
+
 async function fetchTrailPolylineDirect(trail) {
-  if (TRAIL_POLYLINES?.[trail.id]?.length > 1) return TRAIL_POLYLINES[trail.id];
+  if (TRAIL_POLYLINES?.[trail.id]?.length > 0) return TRAIL_POLYLINES[trail.id]; // length = segment count now
   if (attemptedDirectFetch.has(trail.id)) return null;
   if (!trail.lat || !trail.lng) { attemptedDirectFetch.add(trail.id); return null; }
 
-  let result = await fetchTrailPolylineDirectAttempt(trail);
-  if (!result) {
-    await sleep(1500);
-    result = await fetchTrailPolylineDirectAttempt(trail);
+  let attempt = await fetchTrailPolylineDirectAttempt(trail);
+  if (!attempt.segments) {
+    await sleep(attempt.rateLimited ? 6000 : 1500);
+    attempt = await fetchTrailPolylineDirectAttempt(trail);
   }
+  const result = attempt.segments;
+  lastDirectFetchWasRateLimited = !result && attempt.rateLimited;
   attemptedDirectFetch.add(trail.id);
   return result;
 }
@@ -1845,24 +1982,47 @@ function pointToSegmentM(p, a, b) {
   return Math.hypot(cx, cy);
 }
 
+// Downsample a set of disconnected trail line-segments to roughly maxTotal
+// points combined, preserving each segment's own boundaries (never merges
+// points across two separate segments into one).
+function downsampleSegments(segments, maxTotal) {
+  const total = segments.reduce((s, seg) => s + seg.length, 0);
+  if (!total) return [];
+  const step = Math.max(1, Math.ceil(total / maxTotal));
+  return segments
+    .map(seg => seg.filter((_, i) => i % step === 0))
+    .filter(seg => seg.length >= 2);
+}
+
 /**
  * Compute what fraction of (sampled) FIT track points lie within MATCH_RADIUS_M
  * of the trail's path — measured against the nearest point on each segment of
- * the trail polyline (not just its vertices), so sparse/downsampled trail
+ * each disconnected piece of trail geometry (not just vertices), so sparse
  * geometry doesn't cause real overlap to be missed between distant vertices.
- * Returns 0–1, or null if trailPts is missing / only a single reference point.
+ * trailSegments is an array of disconnected point-arrays (a MultiLineString) —
+ * points are never treated as connected across two different segments, so a
+ * trail assembled from several separate OSM ways doesn't produce phantom
+ * straight-line "jumps" between unrelated pieces of the trail.
+ * Returns 0–1, or null if trailSegments is missing / has no usable segment.
  */
-function overlapScore(fitPts, trailPts) {
-  if (!trailPts || trailPts.length < 2) return null; // not enough data → centroid fallback
+function overlapScore(fitPts, trailSegments) {
+  if (!trailSegments || !trailSegments.length) return null; // not enough data → centroid fallback
+  const validSegments = trailSegments.filter(seg => seg && seg.length >= 2);
+  if (!validSegments.length) return null;
   // Sample at most ~300 FIT points to keep the inner loop fast
   const step   = Math.max(1, Math.floor(fitPts.length / 300));
   const sample = fitPts.filter((_, i) => i % step === 0);
   if (!sample.length) return null;
   let hits = 0;
   for (const fp of sample) {
-    for (let i = 0; i < trailPts.length - 1; i++) {
-      if (pointToSegmentM(fp, trailPts[i], trailPts[i + 1]) < MATCH_RADIUS_M) { hits++; break; }
+    let hit = false;
+    for (const seg of validSegments) {
+      for (let i = 0; i < seg.length - 1; i++) {
+        if (pointToSegmentM(fp, seg[i], seg[i + 1]) < MATCH_RADIUS_M) { hit = true; break; }
+      }
+      if (hit) break;
     }
+    if (hit) hits++;
   }
   return hits / sample.length;
 }
@@ -2579,7 +2739,9 @@ function fmtDate(iso) {
   // Migrate any old data that had status='wishlist'
   trails = trails.filter(t => !t.status || t.status === 'ridden');
   trails.forEach(t => { delete t.status; });
+  await loadTrailGeometryCache(); // fast — one request, hydrates most/all trail lines instantly
   render();
+  fetchAllNearbyTrailLines(); // background — only fetches trails still missing from the cache
 })();
 </script>
 </body>

@@ -6,6 +6,7 @@ const app        = express();
 const PORT       = process.env.PORT       || 3000;
 const RIDES_FILE = process.env.RIDES_FILE || '/data/rides.json';
 const FITS_DIR   = path.join(path.dirname(RIDES_FILE), 'fits');
+const TRAIL_GEOM_DIR = path.join(path.dirname(RIDES_FILE), 'trail-geometry');
 const SAFE_KEY   = /^[a-zA-Z0-9_-]{1,80}$/;
 
 // ── Build metadata stamped into HTML at startup ───────────────────────────────
@@ -85,6 +86,39 @@ app.get('/api/fits/:key', (req, res) => {
   const filePath = path.join(FITS_DIR, `${key}.fit`);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
   res.type('application/octet-stream').send(fs.readFileSync(filePath));
+});
+
+// ── GET /api/trail-geometry — bulk-load all cached trail geometry in one shot ─
+// { [trailId]: segments } so the client can hydrate its map cache with a
+// single request at startup instead of one Overpass fetch per trail.
+app.get('/api/trail-geometry', (req, res) => {
+  if (!fs.existsSync(TRAIL_GEOM_DIR)) return res.json({});
+  const out = {};
+  for (const file of fs.readdirSync(TRAIL_GEOM_DIR)) {
+    if (!file.endsWith('.json')) continue;
+    const id = file.slice(0, -5);
+    if (!SAFE_KEY.test(id)) continue;
+    try {
+      out[id] = JSON.parse(fs.readFileSync(path.join(TRAIL_GEOM_DIR, file), 'utf8'));
+    } catch { /* skip corrupt file */ }
+  }
+  res.json(out);
+});
+
+// ── POST /api/trail-geometry/:id — cache one trail's fetched line geometry ───
+// Body: { version: N, segments: [[[lat,lng],...],...] } — stored opaquely;
+// the client owns interpreting/invalidating by version, this just persists
+// whatever shape it's given (including legacy plain-array bodies, for
+// backward compatibility with anything cached before versioning existed).
+app.post('/api/trail-geometry/:id', (req, res) => {
+  const id = req.params.id;
+  if (!SAFE_KEY.test(id)) return res.status(400).json({ error: 'Invalid id' });
+  const isLegacyArray = Array.isArray(req.body);
+  const isVersioned = req.body && typeof req.body === 'object' && Array.isArray(req.body.segments);
+  if (!isLegacyArray && !isVersioned) return res.status(400).json({ error: 'Expected {version, segments} or a legacy array of segments' });
+  if (!fs.existsSync(TRAIL_GEOM_DIR)) fs.mkdirSync(TRAIL_GEOM_DIR, { recursive: true });
+  fs.writeFileSync(path.join(TRAIL_GEOM_DIR, `${id}.json`), JSON.stringify(req.body));
+  res.json({ ok: true });
 });
 
 // ── Catch-all → SPA (serve build-stamped HTML) ───────────────────────────────

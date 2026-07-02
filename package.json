@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js",
+    "dev": "RIDES_FILE=./data/rides.json node --watch server.js",
     "fetch-polylines": "node scripts/fetch-trail-polylines.js"
   },
   "dependencies": {

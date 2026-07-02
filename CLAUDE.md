@@ -92,6 +92,8 @@ The matching loop checks `[t.name, ...(t.osmNames || [])]` for each trail.
 | `DELETE` | `/api/rides` | Resets rides to empty array |
 | `POST` | `/api/fits/:key` | Stores a raw FIT file binary under `<data-dir>/fits/<key>.fit` (see FIT storage below) |
 | `GET` | `/api/fits/:key` | Retrieves a previously stored FIT file |
+| `GET` | `/api/trail-geometry` | Bulk-loads all cached trail line geometry as `{ [trailId]: segments }` (see Trail geometry cache below) |
+| `POST` | `/api/trail-geometry/:id` | Caches one trail's fetched line geometry under `<data-dir>/trail-geometry/<id>.json` |
 | `GET` | `*` | Catch-all → serves `index.html` (see dev-vs-prod note below) |
 
 **Dev vs. prod HTML serving**: the catch-all reads `index.html` fresh from disk on every request when `BUILD_SHA` is unset (local dev) — so editing `public/index.html` is picked up immediately, no server restart needed. In production (`BUILD_SHA` set by CI), it serves the in-memory build-stamped cache instead. `express.static` is mounted with `{ index: false }` so it never intercepts `/` before the catch-all runs (this was a real bug once — `express.static` was silently serving the raw, unstamped `index.html` for every request).
@@ -101,6 +103,16 @@ The matching loop checks `[t.name, ...(t.osmNames || [])]` for each trail.
 Every FIT import uploads a copy of the raw file server-side (fire-and-forget, won't block the import UI if it fails), keyed by `hashString(fitFingerprint)` — a small non-cryptographic hash of the ride's date/miles/start/end fingerprint. The ride record stores this as `fitFile`.
 
 Rides with a stored `fitFile` show a 🔄 **Rescan** button in My Rides. This re-downloads the original FIT, re-parses it, and re-runs the Overpass trail-matching (`findAllNearbyMatches`) — useful after `NEARBY_TRAILS` gains new entries or the matching logic improves, to pick up a better match on old rides. Rides imported before this feature shipped have no `fitFile` and won't show the button.
+
+## Trail geometry cache
+
+Fetching a trail's real path from Overpass is slow (sequential, one request per trail, with a retry — see below) and rate-limit-prone, so results are persisted server-side as one small JSON file per trail under `<data-dir>/trail-geometry/<id>.json`, keyed by `NEARBY_TRAILS` id. Each file is `{ version: N, segments: [[[lat,lng],...],...] }` — segments is an array of disconnected point-arrays, never a flat point array, since a trail's OSM geometry often comes from several separate "ways" and flattening them creates phantom straight-line jumps between unrelated pieces (this was a real bug — see git history).
+
+**Cache versioning / cache-busting**: `TRAIL_GEOM_LOGIC_VERSION` (in `index.html`) must be bumped whenever the trail-matching/name-scoring logic changes in a way that could change which OSM geometry gets attributed to a trail — e.g. editing `NAME_STOP`, the per-way distance sanity check, or scoring thresholds. `loadTrailGeometryCache()` only hydrates entries whose stored `version` matches the current constant; anything older (or in the pre-versioning legacy plain-array format) is silently treated as uncached and gets naturally re-fetched with current logic. This means a logic-fixing deploy self-heals every stale cache entry across all users with no manual cleanup, migration step, or deploy-time script — just remember to bump the constant when the matching logic changes.
+
+On page load, `loadTrailGeometryCache()` bulk-fetches everything already cached in one request and hydrates `TRAIL_POLYLINES` before the first render, so previously-discovered trails show as real blue lines immediately. A background loop (`fetchAllNearbyTrailLines`) then fetches any trail still missing (including anything just invalidated by a version bump), one at a time — Overpass reliably fails when hit with concurrent requests — persisting each result as it resolves so it's instant on every future page load, by anyone. Clicking a trail's "🔄 Load trail path" popup button (`forceLoadTrailLine`) jumps the queue for that one trail on demand, bypassing the "already attempted" guard so a previously-failed trail can be retried.
+
+Since `trail-geometry/` lives under the same `/data` directory as `rides.json` and `fits/`, it's covered by the existing bind-mount volume and survives container redeploys with no extra Docker config.
 
 ## Docker / deployment workflow
 
