@@ -7,6 +7,8 @@ const PORT       = process.env.PORT       || 3000;
 const RIDES_FILE = process.env.RIDES_FILE || '/data/rides.json';
 const FITS_DIR   = path.join(path.dirname(RIDES_FILE), 'fits');
 const TRAIL_GEOM_DIR = path.join(path.dirname(RIDES_FILE), 'trail-geometry');
+const IGNORED_TRAILS_FILE = path.join(path.dirname(RIDES_FILE), 'ignored-trails.json');
+const FETCH_FAILURES_FILE = path.join(path.dirname(RIDES_FILE), 'trail-fetch-failures.json');
 const SAFE_KEY   = /^[a-zA-Z0-9_-]{1,80}$/;
 
 // ── Build metadata stamped into HTML at startup ───────────────────────────────
@@ -118,6 +120,45 @@ app.post('/api/trail-geometry/:id', (req, res) => {
   if (!isLegacyArray && !isVersioned) return res.status(400).json({ error: 'Expected {version, segments} or a legacy array of segments' });
   if (!fs.existsSync(TRAIL_GEOM_DIR)) fs.mkdirSync(TRAIL_GEOM_DIR, { recursive: true });
   fs.writeFileSync(path.join(TRAIL_GEOM_DIR, `${id}.json`), JSON.stringify(req.body));
+  res.json({ ok: true });
+});
+
+// ── GET /api/ignored-trails — list of trail ids excluded from the fetch queue ─
+app.get('/api/ignored-trails', (req, res) => {
+  if (!fs.existsSync(IGNORED_TRAILS_FILE)) return res.json([]);
+  try {
+    const data = JSON.parse(fs.readFileSync(IGNORED_TRAILS_FILE, 'utf8'));
+    res.json(Array.isArray(data) ? data : []);
+  } catch { res.json([]); }
+});
+
+// ── POST /api/ignored-trails — save the full ignored-ids array ───────────────
+app.post('/api/ignored-trails', (req, res) => {
+  const ids = req.body;
+  if (!Array.isArray(ids)) return res.status(400).json({ error: 'Expected array' });
+  ensureDir(IGNORED_TRAILS_FILE);
+  fs.writeFileSync(IGNORED_TRAILS_FILE, JSON.stringify(ids, null, 2));
+  res.json({ ok: true, count: ids.length });
+});
+
+// ── GET /api/trail-fetch-failures — persisted not-found retry counts ─────────
+// { [trailId]: { count, lastFailedAt } } — lets the background queue stop
+// automatically re-hammering a trail that has genuinely failed repeatedly
+// across sessions, instead of retrying it forever on every page load.
+app.get('/api/trail-fetch-failures', (req, res) => {
+  if (!fs.existsSync(FETCH_FAILURES_FILE)) return res.json({});
+  try {
+    const data = JSON.parse(fs.readFileSync(FETCH_FAILURES_FILE, 'utf8'));
+    res.json(data && typeof data === 'object' ? data : {});
+  } catch { res.json({}); }
+});
+
+// ── POST /api/trail-fetch-failures — save the full failure-counts object ─────
+app.post('/api/trail-fetch-failures', (req, res) => {
+  const data = req.body;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return res.status(400).json({ error: 'Expected an object' });
+  ensureDir(FETCH_FAILURES_FILE);
+  fs.writeFileSync(FETCH_FAILURES_FILE, JSON.stringify(data, null, 2));
   res.json({ ok: true });
 });
 

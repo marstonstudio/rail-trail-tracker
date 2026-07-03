@@ -162,6 +162,50 @@
     }
     .reset-btn:hover { background: #fee; border-color: #fbb; }
 
+    /* ── Queue tab ──────────────────────────────────────────────────────────── */
+    #panel-queue { padding: 12px; overflow-y: auto; }
+    .queue-summary {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+      margin-bottom: 12px;
+    }
+    .queue-stat {
+      border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+      font-size: 0.72rem; color: var(--muted); text-align: center;
+    }
+    .queue-stat-num { display: block; font-size: 1.15rem; font-weight: 700; color: var(--text); }
+    .queue-stat-warn .queue-stat-num { color: #b8860b; }
+    .queue-stat-err .queue-stat-num { color: #c44; }
+    .queue-retry-all {
+      width: 100%; margin-bottom: 14px; padding: 7px; font-size: 0.8rem;
+      border: 1px solid var(--border); border-radius: 7px; background: var(--bg);
+      color: var(--text); cursor: pointer; font-weight: 600;
+    }
+    .queue-retry-all:hover { background: #eee; }
+    .queue-section { margin-bottom: 16px; }
+    .queue-section-title {
+      font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.04em; color: var(--muted); margin-bottom: 6px;
+    }
+    .queue-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; padding: 5px 0; font-size: 0.82rem; border-bottom: 1px solid var(--border);
+    }
+    .queue-row:last-child { border-bottom: none; }
+    .queue-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .queue-row-link { flex-shrink: 0; text-decoration: none; font-size: 0.9rem; }
+    .queue-exhausted-note { font-size: 0.68rem; color: var(--muted); font-weight: 600; white-space: nowrap; }
+    .queue-pause-btn {
+      width: 100%; margin-bottom: 10px; padding: 7px; font-size: 0.8rem;
+      border: 1px solid var(--border); border-radius: 7px; background: var(--bg);
+      color: var(--text); cursor: pointer; font-weight: 600;
+    }
+    .queue-pause-btn:hover { background: #eee; }
+    .queue-pause-btn.is-paused { border-color: var(--green); color: var(--green); background: var(--green-light); }
+    .queue-paused-note {
+      font-size: 0.76rem; color: var(--muted); background: var(--bg);
+      border-radius: 7px; padding: 7px 9px; margin-bottom: 12px;
+    }
+
     /* ── Trail group cards (consolidated ride view) ───────────────────────────── */
     .trail-group {
       border-radius: 8px;
@@ -745,6 +789,7 @@
     <div class="sidebar-tabs">
       <button class="tab active" onclick="switchTab('rides')" id="tab-rides">✅ My Rides</button>
       <button class="tab" onclick="switchTab('nearby')" id="tab-nearby">🗺️ Nearby <span id="nearby-count-badge" style="font-weight:400;opacity:.7">(17)</span></button>
+      <button class="tab" onclick="switchTab('queue')" id="tab-queue">📡 Queue <span id="queue-badge" style="font-weight:400;opacity:.7"></span></button>
     </div>
     <div class="tab-panel active" id="panel-rides">
       <div class="panel-header" id="rides-panel-header" style="display:none">
@@ -756,6 +801,9 @@
     <div class="tab-panel" id="panel-nearby">
       <div class="nearby-filter" id="surface-filter"></div>
       <div class="trail-list" id="list-nearby"></div>
+    </div>
+    <div class="tab-panel" id="panel-queue">
+      <div id="queue-content"></div>
     </div>
   </div>
 </div>
@@ -1065,11 +1113,11 @@ function nearbyIcon() {
   });
 }
 
-function buildRiddenPopup(t) {
+function buildRiddenPopup(t, titleName) {
   const linkedIds = [t.nearbyId, ...(t.extraNearbyIds || [])].filter(Boolean);
   const linkedTrails = linkedIds.map(id => NEARBY_TRAILS.find(n => n.id === id)).filter(Boolean);
   const links = linkedTrails.map(n => `<a href="${n.url}" target="_blank" rel="noopener">${linkedTrails.length > 1 ? escHtml(n.name) + ' ↗' : 'TrailLink ↗'}</a>`).join('');
-  return `<div class="lf-popup-name">${escHtml(t.name)}</div>
+  return `<div class="lf-popup-name">${escHtml(titleName || t.name)}</div>
     <div class="lf-popup-meta">
       ${t.state ? escHtml(t.state) + ' · ' : ''}${t.miles ? t.miles + ' mi' : ''}
       ${t.date ? '<br>📅 ' + fmtDate(t.date) : ''}
@@ -1078,21 +1126,48 @@ function buildRiddenPopup(t) {
     ${links ? `<div class="lf-popup-links">${links}</div>` : ''}`;
 }
 
+// For a ride that spans multiple trails (t.nearbyId + t.extraNearbyIds), figure
+// out which specific trail's real path is closest to a clicked point on the
+// ride's green line — so the popup titles itself with the segment you actually
+// clicked, not always the ride's primary trail. Falls back to the primary
+// trail's name if there's only one linked trail, or none have cached geometry
+// to compare against yet.
+function closestLinkedTrailName(t, latlng) {
+  const linkedIds = [t.nearbyId, ...(t.extraNearbyIds || [])].filter(Boolean);
+  if (linkedIds.length <= 1) return t.name;
+
+  let bestName = t.name, bestDist = Infinity;
+  for (const id of linkedIds) {
+    const trail = NEARBY_TRAILS.find(n => n.id === id);
+    const segments = TRAIL_POLYLINES?.[id];
+    if (!trail || !segments) continue;
+    for (const seg of segments) {
+      for (let i = 0; i < seg.length - 1; i++) {
+        const d = pointToSegmentM([latlng.lat, latlng.lng], seg[i], seg[i + 1]);
+        if (d < bestDist) { bestDist = d; bestName = trail.name; }
+      }
+    }
+  }
+  return bestName;
+}
+
 function buildNearbyPopup(n) {
   const ridden = riddenForNearby(n.id);
   const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${n.lat},${n.lng}`;
   const hasLine = !!TRAIL_POLYLINES?.[n.id]?.length;
+  const ignored = ignoredTrailIds.has(n.id);
   return `<div class="lf-popup-name">${escHtml(n.name)}</div>
     <div class="lf-popup-meta">
       ${n.state} · ${n.miles} mi · ${n.distMi} mi from Concord<br>
       ${n.surface}
       ${ridden ? '<br><span style="color:var(--green);font-weight:700">✅ Ridden</span>' : ''}
+      ${ignored ? '<br><span style="color:var(--muted);font-weight:700">🙈 Ignored — see Queue tab</span>' : ''}
     </div>
     <div class="lf-popup-links">
       <a href="${n.url}" target="_blank" rel="noopener">TrailLink ↗</a>
       <a href="${gmapsUrl}" target="_blank" rel="noopener">Maps ↗</a>
     </div>
-    ${!hasLine ? `<button class="lf-popup-log" id="loadline-${n.id}" onclick="forceLoadTrailLine('${n.id}')">🔄 Load trail path</button>` : ''}
+    ${!hasLine && !ignored ? `<button class="lf-popup-log" id="loadline-${n.id}" onclick="forceLoadTrailLine('${n.id}')">🔄 Load trail path</button>` : ''}
     ${!ridden ? `<button class="lf-popup-log" onclick="logRideFromNearby('${n.id}')">+ Log a Ride</button>` : ''}`;
 }
 
@@ -1103,6 +1178,7 @@ function buildNearbyPopup(n) {
 async function forceLoadTrailLine(nearbyId) {
   const n = NEARBY_TRAILS.find(x => x.id === nearbyId);
   if (!n) return;
+  if (ignoredTrailIds.has(nearbyId)) { alert(`${n.name} is marked ignored — un-ignore it from the Queue tab first.`); return; }
   const btn = document.getElementById(`loadline-${nearbyId}`);
   if (btn) { btn.textContent = 'Loading…'; btn.disabled = true; }
   attemptedDirectFetch.delete(nearbyId);
@@ -1128,6 +1204,12 @@ function addRiddenToMap(t) {
   if (t.polyline && t.polyline.length > 1) {
     layer = L.polyline(t.polyline, { color:'#2d7a3a', weight:4, opacity:0.85 })
       .addTo(map).bindPopup(buildRiddenPopup(t));
+    // Multi-trail ride: retitle the popup with whichever linked trail's real
+    // path is closest to the exact point clicked, instead of always showing
+    // the ride's primary trail name.
+    layer.on('click', (e) => {
+      layer.setPopupContent(buildRiddenPopup(t, closestLinkedTrailName(t, e.latlng)));
+    });
   } else if (t.lat && t.lng) {
     layer = L.marker([t.lat, t.lng], { icon: riddenIcon() })
       .addTo(map).bindPopup(buildRiddenPopup(t));
@@ -1216,8 +1298,17 @@ function focusNearby(id) {
     focusRidden(ridden.id);
     return;
   }
-  map.setView([n.lat, n.lng], 12, { animate:true });
-  nearbyMarkers[id]?.openPopup();
+  // If we have the trail's real fetched geometry, fit to its actual path —
+  // the trail's declared lat/lng is just an approximate marker and can be a
+  // couple miles from where the real OSM geometry lies, which made clicking
+  // some trails (e.g. Mass Central RT segments) pan to an empty area.
+  const marker = nearbyMarkers[id];
+  if (marker && marker.getBounds) {
+    map.fitBounds(marker.getBounds(), { padding: [50, 50], animate: true });
+  } else {
+    map.setView([n.lat, n.lng], 12, { animate:true });
+  }
+  marker?.openPopup();
 }
 
 // Progressively fetch each nearby trail's real path in the background (one at
@@ -1227,6 +1318,9 @@ function focusNearby(id) {
 async function fetchAllNearbyTrailLines() {
   for (const n of NEARBY_TRAILS) {
     if (TRAIL_POLYLINES?.[n.id]?.length > 0) continue;
+    if (ignoredTrailIds.has(n.id)) continue;
+    if (autoRetryExhausted(n.id)) continue; // genuinely not-found MAX_AUTO_RETRIES times — needs a manual Retry or Ignore now
+    await waitWhilePaused();
     await fetchTrailPolylineDirect(n);
     refreshNearbyMarkers();
   }
@@ -1687,7 +1781,7 @@ const fetchedBboxKeys = new Set();
 // NAME_STOP word list, distance sanity checks, scoring thresholds). Cached
 // entries stamped with an older version are treated as stale and silently
 // re-fetched — no manual cache-clearing needed on deploy.
-const TRAIL_GEOM_LOGIC_VERSION = 2; // v2: removed river/creek/lake/pond from NAME_STOP
+const TRAIL_GEOM_LOGIC_VERSION = 3; // v3: distance tiebreak for same-score name matches (fixes Mass Central RT segments stealing each other's geometry)
 
 // Load every trail's previously-cached geometry from the server in one request.
 // Entries cached under an older matching-logic version are skipped (left
@@ -1702,6 +1796,7 @@ async function loadTrailGeometryCache() {
     for (const [id, entry] of Object.entries(data)) {
       if (entry && entry.version === TRAIL_GEOM_LOGIC_VERSION && Array.isArray(entry.segments)) {
         TRAIL_POLYLINES[id] = entry.segments;
+        setTrailFetchStatus(id, 'success', { fromCache: true });
       }
       // else: stale (old/legacy format, or older logic version) — left
       // uncached, so fetchAllNearbyTrailLines/fetchTrailPolylineDirect will
@@ -1800,13 +1895,23 @@ out geom qt;`;
       // Without this, trails that share a generic name prefix (e.g. several
       // "Mass Central RT — ..." segments) can steal geometry that actually
       // belongs to a completely different, far-away segment.
-      let bestId = null, bestScore = 0.5; // threshold: at least 50% keyword overlap
+      // Score is the primary key, but several same-family trails (e.g. "Mass
+      // Central RT — ..." segments) routinely tie on score because the real
+      // OSM way name is often just the generic trail name with no
+      // segment-specific qualifier — so on a tie, prefer whichever candidate
+      // is geographically closest to this way's actual geometry, instead of
+      // silently keeping whichever trail happened to appear first in the array.
+      let bestId = null, bestScore = 0.5, bestDist = Infinity; // threshold: at least 50% keyword overlap
       for (const t of NEARBY_TRAILS) {
-        if (t.lat && t.lng && haversineMi(wLat, wLng, t.lat, t.lng) > 20) continue;
+        if (!t.lat || !t.lng) continue;
+        const dist = haversineMi(wLat, wLng, t.lat, t.lng);
+        if (dist > 20) continue;
         const namesToCheck = [t.name, ...(t.osmNames || [])];
         for (const n of namesToCheck) {
           const s = nameMatchScore(osmName, n);
-          if (s > bestScore) { bestScore = s; bestId = t.id; }
+          if (s > bestScore || (s === bestScore && dist < bestDist)) {
+            bestScore = s; bestId = t.id; bestDist = dist;
+          }
         }
       }
 
@@ -1857,6 +1962,117 @@ out geom qt;`;
 const attemptedDirectFetch = new Set();
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─── Queue pause control ────────────────────────────────────────────────────
+// Pauses the automated multi-trail loops (the background page-load sweep and
+// "Retry all failed") — not a persisted setting, and doesn't affect a single
+// deliberate "Retry" click on one trail, which always runs regardless.
+let queuePaused = false;
+
+async function waitWhilePaused() {
+  while (queuePaused) await sleep(300);
+}
+
+function toggleQueuePause() {
+  queuePaused = !queuePaused;
+  if (document.getElementById('tab-queue')?.classList.contains('active')) renderQueuePanel();
+}
+
+// ─── Ignored trails — permanently skipped by the fetch queue ──────────────────
+// Persisted server-side (shared across sessions/users) so a trail marked
+// "ignored" stays ignored after a reload, not just for this browser tab.
+let ignoredTrailIds = new Set();
+
+async function loadIgnoredTrails() {
+  try {
+    const res = await fetch('/api/ignored-trails');
+    if (!res.ok) return;
+    const ids = await res.json();
+    if (Array.isArray(ids)) ignoredTrailIds = new Set(ids);
+  } catch (e) { console.warn('Could not load ignored trails:', e.message); }
+}
+
+async function persistIgnoredTrails() {
+  try {
+    await fetch('/api/ignored-trails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify([...ignoredTrailIds]),
+    });
+  } catch (e) { console.warn('Could not persist ignored trails:', e.message); }
+}
+
+function ignoreTrail(id) {
+  ignoredTrailIds.add(id);
+  persistIgnoredTrails();
+  if (document.getElementById('tab-queue')?.classList.contains('active')) renderQueuePanel();
+  updateQueueBadge();
+}
+
+function unignoreTrail(id) {
+  ignoredTrailIds.delete(id);
+  persistIgnoredTrails();
+  if (document.getElementById('tab-queue')?.classList.contains('active')) renderQueuePanel();
+  updateQueueBadge();
+}
+
+// ─── Not-found retry cap ────────────────────────────────────────────────────
+// Persisted server-side (shared across sessions) so a trail that genuinely
+// has no matching OSM data doesn't get re-queried on every single page load
+// forever — after MAX_AUTO_RETRIES consecutive not-found results, the
+// background loop and "Retry all" stop touching it automatically. A single
+// manual "Retry" click always still works and resets the count.
+// { [trailId]: { count, lastFailedAt } } — rate-limited failures don't count,
+// since those aren't the trail's fault.
+const MAX_AUTO_RETRIES = 3;
+let trailFailureCounts = {};
+
+async function loadTrailFailureCounts() {
+  try {
+    const res = await fetch('/api/trail-fetch-failures');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && typeof data === 'object') trailFailureCounts = data;
+  } catch (e) { console.warn('Could not load trail fetch-failure counts:', e.message); }
+}
+
+async function persistTrailFailureCounts() {
+  try {
+    await fetch('/api/trail-fetch-failures', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(trailFailureCounts),
+    });
+  } catch (e) { console.warn('Could not persist trail fetch-failure counts:', e.message); }
+}
+
+function recordTrailFetchOutcome(id, succeeded) {
+  if (succeeded) {
+    if (trailFailureCounts[id]) { delete trailFailureCounts[id]; persistTrailFailureCounts(); }
+    return;
+  }
+  const prev = trailFailureCounts[id]?.count || 0;
+  trailFailureCounts[id] = { count: prev + 1, lastFailedAt: Date.now() };
+  persistTrailFailureCounts();
+}
+
+function autoRetryExhausted(id) {
+  return (trailFailureCounts[id]?.count || 0) >= MAX_AUTO_RETRIES;
+}
+
+// ─── Trail geometry fetch-queue status (for the "Queue" tab) ──────────────────
+// trailId → { status: 'fetching'|'success'|'rate-limited'|'not-found', updatedAt, fromCache }
+// Anything not in this map and not yet in TRAIL_POLYLINES is implicitly 'pending'.
+// Ignored trails always report 'ignored' regardless of any prior fetch status.
+// Session-scoped only (like TRAIL_POLYLINES/attemptedDirectFetch) — this is a
+// live view of this page load's background work, not something to persist.
+const trailFetchStatus = {};
+
+function setTrailFetchStatus(id, status, extra) {
+  trailFetchStatus[id] = { status, updatedAt: Date.now(), ...extra };
+  updateQueueBadge();
+  if (document.getElementById('tab-queue')?.classList.contains('active')) renderQueuePanel();
+}
 
 // Returns { segments, rateLimited } — rateLimited is true specifically on an
 // HTTP 429, so callers can back off longer than for a generic/transient failure.
@@ -1929,16 +2145,23 @@ let lastDirectFetchWasRateLimited = false;
 
 async function fetchTrailPolylineDirect(trail) {
   if (TRAIL_POLYLINES?.[trail.id]?.length > 0) return TRAIL_POLYLINES[trail.id]; // length = segment count now
+  if (ignoredTrailIds.has(trail.id)) return null; // user marked this one "don't retry" — respected everywhere
   if (attemptedDirectFetch.has(trail.id)) return null;
   if (!trail.lat || !trail.lng) { attemptedDirectFetch.add(trail.id); return null; }
 
+  setTrailFetchStatus(trail.id, 'fetching');
   let attempt = await fetchTrailPolylineDirectAttempt(trail);
   if (!attempt.segments) {
+    setTrailFetchStatus(trail.id, attempt.rateLimited ? 'rate-limited' : 'not-found'); // interim, while we retry
     await sleep(attempt.rateLimited ? 6000 : 1500);
     attempt = await fetchTrailPolylineDirectAttempt(trail);
   }
   const result = attempt.segments;
   lastDirectFetchWasRateLimited = !result && attempt.rateLimited;
+  setTrailFetchStatus(trail.id, result ? 'success' : (attempt.rateLimited ? 'rate-limited' : 'not-found'));
+  // Only a genuine not-found counts against the auto-retry cap — rate-limiting
+  // isn't the trail's fault, so it shouldn't push it toward exhausted.
+  if (!attempt.rateLimited) recordTrailFetchOutcome(trail.id, !!result);
   attemptedDirectFetch.add(trail.id);
   return result;
 }
@@ -2718,8 +2941,101 @@ async function deleteTrail(id) {
 function switchTab(name) {
   document.getElementById('tab-rides').classList.toggle('active', name==='rides');
   document.getElementById('tab-nearby').classList.toggle('active', name==='nearby');
+  document.getElementById('tab-queue').classList.toggle('active', name==='queue');
   document.getElementById('panel-rides').classList.toggle('active', name==='rides');
   document.getElementById('panel-nearby').classList.toggle('active', name==='nearby');
+  document.getElementById('panel-queue').classList.toggle('active', name==='queue');
+  if (name === 'queue') renderQueuePanel();
+}
+
+// ─── Queue tab ──────────────────────────────────────────────────────────────
+function getTrailQueueStatus(id) {
+  if (ignoredTrailIds.has(id)) return 'ignored';
+  const entry = trailFetchStatus[id];
+  if (entry) return entry.status;
+  if (TRAIL_POLYLINES?.[id]?.length > 0) return 'success';
+  return 'pending';
+}
+
+function updateQueueBadge() {
+  const badge = document.getElementById('queue-badge');
+  if (!badge) return;
+  const left = NEARBY_TRAILS.filter(n => {
+    const s = getTrailQueueStatus(n.id);
+    return s === 'pending' || s === 'fetching';
+  }).length;
+  badge.textContent = left > 0 ? `(${left})` : '';
+}
+
+function renderQueuePanel() {
+  const el = document.getElementById('queue-content');
+  if (!el) return;
+
+  const buckets = { pending: [], fetching: [], success: [], 'rate-limited': [], 'not-found': [], ignored: [] };
+  NEARBY_TRAILS.forEach(n => buckets[getTrailQueueStatus(n.id)].push(n));
+
+  const summary = `
+    <div class="queue-summary">
+      <div class="queue-stat"><span class="queue-stat-num">${buckets.success.length}</span>loaded</div>
+      <div class="queue-stat"><span class="queue-stat-num">${buckets.pending.length + buckets.fetching.length}</span>waiting</div>
+      <div class="queue-stat queue-stat-warn"><span class="queue-stat-num">${buckets['rate-limited'].length}</span>rate-limited</div>
+      <div class="queue-stat queue-stat-err"><span class="queue-stat-num">${buckets['not-found'].length}</span>not found</div>
+      <div class="queue-stat"><span class="queue-stat-num">${buckets.ignored.length}</span>ignored</div>
+    </div>`;
+
+  const pauseBtn = `<button class="queue-pause-btn ${queuePaused ? 'is-paused' : ''}" onclick="toggleQueuePause()">${queuePaused ? '▶️ Resume queue' : '⏸️ Pause queue'}</button>`;
+  const pauseNote = queuePaused
+    ? `<div class="queue-paused-note">⏸️ Queue paused — background fetching and "Retry all" are on hold. A single "Retry" click still works.</div>`
+    : '';
+
+  const failedCount = buckets['rate-limited'].length + buckets['not-found'].length;
+  const retryAllBtn = failedCount > 0
+    ? `<button class="queue-retry-all" onclick="retryAllFailedTrails()" ${queuePaused ? 'disabled title="Resume the queue first"' : ''}>🔄 Retry all failed (${failedCount})</button>`
+    : '';
+
+  const trailLink = n => n.url ? `<a href="${n.url}" target="_blank" rel="noopener" class="queue-row-link" title="Research this trail">🔗</a>` : '';
+
+  const section = (title, list, { showRetry, showIgnore, showUnignore } = {}) => {
+    if (!list.length) return '';
+    const rows = list.map(n => {
+      const exhausted = showRetry && autoRetryExhausted(n.id);
+      return `
+      <div class="queue-row">
+        <span class="queue-row-name">${escHtml(n.name)}${exhausted ? ' <span class="queue-exhausted-note" title="Failed ' + MAX_AUTO_RETRIES + '+ times — auto-retry stopped, Retry still works manually">⏹ auto-retry stopped</span>' : ''}</span>
+        ${trailLink(n)}
+        ${showRetry ? `<button class="icon-btn" onclick="forceLoadTrailLine('${n.id}')">Retry</button>` : ''}
+        ${showIgnore ? `<button class="icon-btn" onclick="ignoreTrail('${n.id}')" title="Stop retrying this trail">Ignore</button>` : ''}
+        ${showUnignore ? `<button class="icon-btn" onclick="unignoreTrail('${n.id}')">Un-ignore</button>` : ''}
+      </div>`;
+    }).join('');
+    return `<div class="queue-section"><div class="queue-section-title">${title}</div>${rows}</div>`;
+  };
+
+  el.innerHTML = pauseBtn + pauseNote + summary + retryAllBtn +
+    section('🔄 Fetching now', buckets.fetching, {}) +
+    section('🚫 Rate-limited — clears on its own, or retry now', buckets['rate-limited'], { showRetry: true, showIgnore: true }) +
+    section('❓ Not found — worth investigating', buckets['not-found'], { showRetry: true, showIgnore: true }) +
+    section(`🙈 Ignored (${buckets.ignored.length})`, buckets.ignored, { showUnignore: true }) +
+    section(`⏳ Waiting in queue (${buckets.pending.length})`, buckets.pending, { showIgnore: true });
+
+  updateQueueBadge();
+}
+
+// Retries every currently rate-limited/not-found trail, one at a time (never
+// concurrently — Overpass's free instance reliably fails under parallel load).
+// Trails that have exhausted their auto-retry cap are skipped here too — use
+// that trail's own "Retry" button to explicitly override the cap for just it.
+async function retryAllFailedTrails() {
+  const ids = NEARBY_TRAILS
+    .filter(n => ['rate-limited', 'not-found'].includes(getTrailQueueStatus(n.id)) && !autoRetryExhausted(n.id))
+    .map(n => n.id);
+  for (const id of ids) {
+    if (ignoredTrailIds.has(id)) continue;
+    await waitWhilePaused();
+    attemptedDirectFetch.delete(id);
+    await fetchTrailPolylineDirect(NEARBY_TRAILS.find(n => n.id === id));
+    refreshNearbyMarkers();
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -2739,7 +3055,7 @@ function fmtDate(iso) {
   // Migrate any old data that had status='wishlist'
   trails = trails.filter(t => !t.status || t.status === 'ridden');
   trails.forEach(t => { delete t.status; });
-  await loadTrailGeometryCache(); // fast — one request, hydrates most/all trail lines instantly
+  await Promise.all([loadTrailGeometryCache(), loadIgnoredTrails(), loadTrailFailureCounts()]); // fast — hydrates trail lines + ignore list + retry-cap state before first render
   render();
   fetchAllNearbyTrailLines(); // background — only fetches trails still missing from the cache
 })();
