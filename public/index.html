@@ -183,9 +183,16 @@
     .queue-retry-all:hover { background: #eee; }
     .queue-section { margin-bottom: 16px; }
     .queue-section-title {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
       font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
       letter-spacing: 0.04em; color: var(--muted); margin-bottom: 6px;
     }
+    .queue-copy-prompt-btn {
+      text-transform: none; letter-spacing: normal; font-size: 0.72rem; font-weight: 600;
+      padding: 3px 8px; border: 1px solid var(--border); border-radius: 6px;
+      background: var(--bg); color: var(--text); cursor: pointer; white-space: nowrap;
+    }
+    .queue-copy-prompt-btn:hover { background: #eee; }
     .queue-row {
       display: flex; align-items: center; justify-content: space-between;
       gap: 8px; padding: 5px 0; font-size: 0.82rem; border-bottom: 1px solid var(--border);
@@ -2995,7 +3002,7 @@ function renderQueuePanel() {
 
   const trailLink = n => n.url ? `<a href="${n.url}" target="_blank" rel="noopener" class="queue-row-link" title="Research this trail">🔗</a>` : '';
 
-  const section = (title, list, { showRetry, showIgnore, showUnignore } = {}) => {
+  const section = (title, list, { showRetry, showIgnore, showUnignore, showCopyPrompt } = {}) => {
     if (!list.length) return '';
     const rows = list.map(n => {
       const exhausted = showRetry && autoRetryExhausted(n.id);
@@ -3008,13 +3015,16 @@ function renderQueuePanel() {
         ${showUnignore ? `<button class="icon-btn" onclick="unignoreTrail('${n.id}')">Un-ignore</button>` : ''}
       </div>`;
     }).join('');
-    return `<div class="queue-section"><div class="queue-section-title">${title}</div>${rows}</div>`;
+    const copyBtn = showCopyPrompt
+      ? `<button class="icon-btn queue-copy-prompt-btn" id="copy-not-found-btn" onclick="copyNotFoundPrompt()">📋 Copy investigation prompt</button>`
+      : '';
+    return `<div class="queue-section"><div class="queue-section-title">${title}${copyBtn}</div>${rows}</div>`;
   };
 
   el.innerHTML = pauseBtn + pauseNote + summary + retryAllBtn +
     section('🔄 Fetching now', buckets.fetching, {}) +
     section('🚫 Rate-limited — clears on its own, or retry now', buckets['rate-limited'], { showRetry: true, showIgnore: true }) +
-    section('❓ Not found — worth investigating', buckets['not-found'], { showRetry: true, showIgnore: true }) +
+    section('❓ Not found — worth investigating', buckets['not-found'], { showRetry: true, showIgnore: true, showCopyPrompt: buckets['not-found'].length > 0 }) +
     section(`🙈 Ignored (${buckets.ignored.length})`, buckets.ignored, { showUnignore: true }) +
     section(`⏳ Waiting in queue (${buckets.pending.length})`, buckets.pending, { showIgnore: true });
 
@@ -3035,6 +3045,35 @@ async function retryAllFailedTrails() {
     attemptedDirectFetch.delete(id);
     await fetchTrailPolylineDirect(NEARBY_TRAILS.find(n => n.id === id));
     refreshNearbyMarkers();
+  }
+}
+
+// Builds a ready-to-paste Claude Code prompt describing every currently
+// "not found" trail (name, id, coords, and any osmNames aliases already
+// configured) so investigating a batch of failures doesn't require manually
+// looking up each trail's details by hand.
+function buildNotFoundPrompt() {
+  const notFound = NEARBY_TRAILS.filter(n => getTrailQueueStatus(n.id) === 'not-found');
+  if (!notFound.length) return '';
+  const lines = notFound.map(n => {
+    const aliases = n.osmNames?.length ? `, osmNames: [${n.osmNames.map(a => `"${a}"`).join(', ')}]` : '';
+    return `- "${n.name}" (id: ${n.id}, lat/lng: ${n.lat}, ${n.lng}${aliases}) — ${n.url}`;
+  }).join('\n');
+  return `The Rail Trail Tracker app (see CLAUDE.md) can't find OSM trail geometry for these trails via the Overpass query in fetchTrailPolylineDirectAttempt() in public/index.html. For each one, please investigate why — check whether the trail exists in OpenStreetMap under a different name (add it to that trail's osmNames array), whether its declared lat/lng is far from its real-world path (the search bbox is centered on lat/lng), or whether it just isn't mapped in OSM yet. Then fix what you can.
+
+${lines}`;
+}
+
+async function copyNotFoundPrompt() {
+  const prompt = buildNotFoundPrompt();
+  if (!prompt) return;
+  const btn = document.getElementById('copy-not-found-btn');
+  try {
+    await navigator.clipboard.writeText(prompt);
+    if (btn) { const orig = btn.textContent; btn.textContent = '✅ Copied!'; setTimeout(() => { btn.textContent = orig; }, 1500); }
+  } catch (e) {
+    console.warn('Clipboard write failed:', e.message);
+    alert('Could not copy to clipboard. Prompt:\n\n' + prompt);
   }
 }
 
