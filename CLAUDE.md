@@ -66,6 +66,10 @@ Minimum trail length for inclusion is 2.5 miles, with rare manual exceptions for
 
 The Mass Central Rail Trail is tracked as multiple separate entries (`n98`–`n105`, prefixed "Mass Central RT — ...") rather than one single trail, since it's actually many independently-built, non-contiguous rideable sections. The Norwottuck Branch section is tracked separately under its own historical name/id (`n49`) rather than under the Mass Central RT prefix.
 
+**Nearby tab filters**: surface filter chips (Paved, Gravel, etc.) plus an "Unridden" chip that sits right after "All", styled identically but toggling independently (`nearbyHideRidden`, defaults to `true`/active) — both a surface filter and "Unridden" can be active at the same time, since they filter different dimensions.
+
+**Map tiles**: both the main map and the match-picker map use CartoDB Voyager tiles (`basemaps.cartocdn.com/rastertiles/voyager`), not stock OpenStreetMap raster tiles — Voyager keeps street names/road network visible but doesn't bake in highway route-shield numbers (I-190, MA-2, etc.) the way stock OSM tiles do.
+
 ## GPS / FIT file matching
 
 When a `.fit` file is imported:
@@ -83,6 +87,8 @@ osmNames: ['Island Line Trail', 'Island Line Rail Trail', 'Burlington Greenway',
 
 The matching loop checks `[t.name, ...(t.osmNames || [])]` for each trail.
 
+**Distance tiebreak** — several same-family trails (e.g. the "Mass Central RT — ..." segments) routinely tie on name-match score, because the real OSM way is often just the generic trail name with no segment-specific qualifier. When candidates tie on score, the closer one (by `haversineMi` from the way's geometry centroid to the candidate's declared `lat/lng`) wins, instead of silently keeping whichever trail happened to appear first in `NEARBY_TRAILS`. Without this, one segment's geometry can get misattributed to a neighboring segment.
+
 ## API
 
 | Method | Path | Description |
@@ -94,6 +100,10 @@ The matching loop checks `[t.name, ...(t.osmNames || [])]` for each trail.
 | `GET` | `/api/fits/:key` | Retrieves a previously stored FIT file |
 | `GET` | `/api/trail-geometry` | Bulk-loads all cached trail line geometry as `{ [trailId]: segments }` (see Trail geometry cache below) |
 | `POST` | `/api/trail-geometry/:id` | Caches one trail's fetched line geometry under `<data-dir>/trail-geometry/<id>.json` |
+| `GET` | `/api/ignored-trails` | Returns the array of trail ids the user has marked "ignored" (excluded from the fetch queue forever) |
+| `POST` | `/api/ignored-trails` | Saves the full ignored-ids array (body: JSON array), mirrors the `rides.json` full-overwrite pattern |
+| `GET` | `/api/trail-fetch-failures` | Returns `{ [trailId]: { count, lastFailedAt } }` — persisted not-found retry counts (see Queue tab below) |
+| `POST` | `/api/trail-fetch-failures` | Saves the full failure-counts object (body: JSON object), full overwrite |
 | `GET` | `*` | Catch-all → serves `index.html` (see dev-vs-prod note below) |
 
 **Dev vs. prod HTML serving**: the catch-all reads `index.html` fresh from disk on every request when `BUILD_SHA` is unset (local dev) — so editing `public/index.html` is picked up immediately, no server restart needed. In production (`BUILD_SHA` set by CI), it serves the in-memory build-stamped cache instead. `express.static` is mounted with `{ index: false }` so it never intercepts `/` before the catch-all runs (this was a real bug once — `express.static` was silently serving the raw, unstamped `index.html` for every request).
@@ -108,11 +118,26 @@ Rides with a stored `fitFile` show a 🔄 **Rescan** button in My Rides. This re
 
 Fetching a trail's real path from Overpass is slow (sequential, one request per trail, with a retry — see below) and rate-limit-prone, so results are persisted server-side as one small JSON file per trail under `<data-dir>/trail-geometry/<id>.json`, keyed by `NEARBY_TRAILS` id. Each file is `{ version: N, segments: [[[lat,lng],...],...] }` — segments is an array of disconnected point-arrays, never a flat point array, since a trail's OSM geometry often comes from several separate "ways" and flattening them creates phantom straight-line jumps between unrelated pieces (this was a real bug — see git history).
 
-**Cache versioning / cache-busting**: `TRAIL_GEOM_LOGIC_VERSION` (in `index.html`) must be bumped whenever the trail-matching/name-scoring logic changes in a way that could change which OSM geometry gets attributed to a trail — e.g. editing `NAME_STOP`, the per-way distance sanity check, or scoring thresholds. `loadTrailGeometryCache()` only hydrates entries whose stored `version` matches the current constant; anything older (or in the pre-versioning legacy plain-array format) is silently treated as uncached and gets naturally re-fetched with current logic. This means a logic-fixing deploy self-heals every stale cache entry across all users with no manual cleanup, migration step, or deploy-time script — just remember to bump the constant when the matching logic changes.
+**Cache versioning / cache-busting**: `TRAIL_GEOM_LOGIC_VERSION` (in `index.html`, currently `3`) must be bumped whenever the trail-matching/name-scoring logic changes in a way that could change which OSM geometry gets attributed to a trail — e.g. editing `NAME_STOP`, the per-way distance sanity check, the distance tiebreak, or scoring thresholds. `loadTrailGeometryCache()` only hydrates entries whose stored `version` matches the current constant; anything older (or in the pre-versioning legacy plain-array format) is silently treated as uncached and gets naturally re-fetched with current logic. This means a logic-fixing deploy self-heals every stale cache entry across all users with no manual cleanup, migration step, or deploy-time script — just remember to bump the constant when the matching logic changes.
 
 On page load, `loadTrailGeometryCache()` bulk-fetches everything already cached in one request and hydrates `TRAIL_POLYLINES` before the first render, so previously-discovered trails show as real blue lines immediately. A background loop (`fetchAllNearbyTrailLines`) then fetches any trail still missing (including anything just invalidated by a version bump), one at a time — Overpass reliably fails when hit with concurrent requests — persisting each result as it resolves so it's instant on every future page load, by anyone. Clicking a trail's "🔄 Load trail path" popup button (`forceLoadTrailLine`) jumps the queue for that one trail on demand, bypassing the "already attempted" guard so a previously-failed trail can be retried.
 
 Since `trail-geometry/` lives under the same `/data` directory as `rides.json` and `fits/`, it's covered by the existing bind-mount volume and survives container redeploys with no extra Docker config.
+
+**Rate-limiting vs. genuine not-found**: `fetchTrailPolylineDirectAttempt()` classifies every failure as either transient (`rateLimited: true` — retried, doesn't count against anything) or a genuine not-found. Any non-2xx HTTP response (429, but also 5xx/504 Overpass throws when overloaded) and a client-side `AbortError` from `OVERPASS_TIMEOUT_MS` (12s) are both treated as transient — a timeout usually just means Overpass was too slow to answer, not that the trail has no data. Only a clean 200 response with no matching-enough OSM way counts as a real not-found.
+
+**Not-found retry cap**: genuine not-founds are tracked server-side in `trail-fetch-failures.json` as `{ [trailId]: { count, lastFailedAt } }`. After `MAX_AUTO_RETRIES` (3) consecutive genuine not-founds, the background loop and bulk "Retry all rate-limited" stop touching that trail automatically — a manual "Retry" click in the Queue tab always still works and resets the count. Rate-limited failures never count against this cap.
+
+**Ignored trails**: `ignoredTrailIds` (hydrated from/persisted to `ignored-trails.json`) lets a trail be permanently excluded from the fetch queue. `fetchTrailPolylineDirect()` checks it at its single choke point, so it's respected uniformly across the background loop, manual retry, and match-picker eager fetches.
+
+## Queue tab
+
+The "📡 Queue" tab (`switchTab('queue')`, `renderQueuePanel()`) gives visibility into the background Overpass fetch pipeline. Each trail's live status (`trailFetchStatus`, session-only) is one of `pending`/`fetching`/`success`/`rate-limited`/`not-found`/`ignored`, shown with live summary counts, per-trail Retry/Ignore/Un-ignore buttons, and a research link (trail's `url`) per row.
+
+- **Pause/resume** (`queuePaused` + `waitWhilePaused()`) halts the background loop and manual "Retry all"; a single per-trail Retry click still works even while paused.
+- **Rate-limit banner**: whenever any trail is currently `rate-limited`, an inline banner explains that Overpass is rate-limiting and backing off automatically — this replaced an `alert()` popup that used to interrupt on every manual retry.
+- **"📋 Copy investigation prompt"** button (in the "Not found" section) copies a ready-to-paste Claude Code prompt to the clipboard listing every not-found trail's name, id, coordinates, `osmNames` aliases, and source URL, framed as an investigation task pointing at `fetchTrailPolylineDirectAttempt()`.
+- Not-found trails are deliberately excluded from any bulk retry — only their own individual "Retry" button overrides the cap. (There used to be a "Retry all failed" button covering both rate-limited and not-found trails; it was removed entirely per user request, since not-found trails failing for a real reason shouldn't be swept into a bulk action.)
 
 ## Docker / deployment workflow
 
@@ -150,4 +175,5 @@ On startup, `server.js` auto-migrates `trails.json` → `rides.json` if the old 
 - The NAS is at `ugreen.local:3000` when on the local network
 - Always test changes locally at `localhost:3000` before committing and pushing
 - When the user is mid-session making multiple changes, hold off on `git commit`/`git push` until they explicitly say to — don't commit after every individual edit
+- Before committing, always check whether CLAUDE.md needs updating to reflect what changed (new API endpoints, new UI behavior, new architectural decisions) and update it as part of the same commit — don't let it drift stale
 - A `PostToolUse` hook (`.claude/settings.json`, gitignored — local machine config, not checked in) watches `git push` commands and polls Docker Hub in the background, notifying when the new image is live so there's no need to manually check build status

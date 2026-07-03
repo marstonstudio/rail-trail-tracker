@@ -175,12 +175,6 @@
     .queue-stat-num { display: block; font-size: 1.15rem; font-weight: 700; color: var(--text); }
     .queue-stat-warn .queue-stat-num { color: #b8860b; }
     .queue-stat-err .queue-stat-num { color: #c44; }
-    .queue-retry-all {
-      width: 100%; margin-bottom: 14px; padding: 7px; font-size: 0.8rem;
-      border: 1px solid var(--border); border-radius: 7px; background: var(--bg);
-      color: var(--text); cursor: pointer; font-weight: 600;
-    }
-    .queue-retry-all:hover { background: #eee; }
     .queue-section { margin-bottom: 16px; }
     .queue-section-title {
       display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -789,7 +783,7 @@
     <div id="map" style="width:100%;height:100%"></div>
     <div class="map-legend">
       <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Ridden</div>
-      <div class="legend-item"><div class="legend-dot" style="background:white;border:2.5px solid var(--blue)"></div> Nearby trail</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div> Nearby trail</div>
     </div>
   </div>
   <div class="sidebar">
@@ -1095,9 +1089,13 @@ function genId() {
 // ─── Map ──────────────────────────────────────────────────────────────────────
 const map = L.map('map').setView([42.45, -71.4], 8);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  maxZoom: 18
+// CartoDB Voyager instead of stock OSM tiles — keeps street names/road network
+// visible but drops the highway route-shield numbers (I-190, MA-2, etc.) baked
+// into standard OSM raster tiles, which cluttered the map at a glance.
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
+  maxZoom: 20,
+  subdomains: 'abcd',
 }).addTo(map);
 
 const mapLayers = {};     // trail id → ridden layer
@@ -1113,9 +1111,13 @@ function riddenIcon() {
 }
 
 function nearbyIcon() {
+  // will-change/translateZ force this onto its own compositing layer — with
+  // 100+ of these on the map at once, plain box-shadow markers are prone to a
+  // known WebKit/Leaflet glitch where a marker's repaint gets dropped mid
+  // pan/zoom transform, making it flicker out until the next full redraw.
   return L.divIcon({
     className: '',
-    html: `<div style="width:13px;height:13px;border-radius:50%;background:white;border:2.5px solid #2563b0;box-shadow:0 1px 4px rgba(0,0,0,0.3)"></div>`,
+    html: `<div style="width:13px;height:13px;border-radius:50%;background:white;border:2.5px solid #2563b0;box-shadow:0 1px 4px rgba(0,0,0,0.3);will-change:transform;transform:translateZ(0)"></div>`,
     iconSize: [13,13], iconAnchor:[6,6], popupAnchor:[0,-9]
   });
 }
@@ -1193,9 +1195,10 @@ async function forceLoadTrailLine(nearbyId) {
   refreshNearbyMarkers();
   if (!pts) {
     nearbyMarkers[nearbyId]?.openPopup();
-    if (lastDirectFetchWasRateLimited) {
-      alert(`The map data service is rate-limiting requests right now. Wait a minute or two and try "Load trail path" again for ${n.name}.`);
-    } else {
+    // Rate-limiting is explained inline in the Queue tab's banner instead of
+    // an interrupting alert — this is common under normal background load
+    // and doesn't need a popup every time it happens.
+    if (!lastDirectFetchWasRateLimited) {
       alert(`Couldn't find a matching trail path in the map data for ${n.name}. You can try again later.`);
     }
   }
@@ -1341,6 +1344,7 @@ window.logRideFromNearby = function(nearbyId) {
 
 // ─── Render ───────────────────────────────────────────────────────────────────
 let nearbyFilter = 'All';
+let nearbyHideRidden = true; // on by default — surfaces what's left to ride
 
 function render() {
   renderRides();
@@ -1465,15 +1469,22 @@ function renderRides() {
 }
 
 function renderNearby() {
-  // Build filter chips
+  // Build filter chips. "Unridden" sits right after "All" and looks like any
+  // other chip, but toggles independently of the surface filter rather than
+  // replacing it — both a surface and "Unridden" can be active at once.
   const surfaces = ['All', ...new Set(NEARBY_TRAILS.map(n => n.surface))];
   const filterEl = document.getElementById('surface-filter');
-  filterEl.innerHTML = surfaces.map(s =>
-    `<button class="filter-chip ${s === nearbyFilter ? 'active' : ''}" onclick="setNearbyFilter('${s}')">${s}</button>`
-  ).join('');
+  filterEl.innerHTML = [
+    `<button class="filter-chip ${'All' === nearbyFilter ? 'active' : ''}" onclick="setNearbyFilter('All')">All</button>`,
+    `<button class="filter-chip ${nearbyHideRidden ? 'active' : ''}" onclick="toggleHideRidden()">Unridden</button>`,
+    ...surfaces.slice(1).map(s =>
+      `<button class="filter-chip ${s === nearbyFilter ? 'active' : ''}" onclick="setNearbyFilter('${s}')">${s}</button>`
+    ),
+  ].join('');
 
   const el = document.getElementById('list-nearby');
-  const filtered = nearbyFilter === 'All' ? NEARBY_TRAILS : NEARBY_TRAILS.filter(n => n.surface === nearbyFilter);
+  let filtered = nearbyFilter === 'All' ? NEARBY_TRAILS : NEARBY_TRAILS.filter(n => n.surface === nearbyFilter);
+  if (nearbyHideRidden) filtered = filtered.filter(n => !riddenForNearby(n.id));
 
   let html = '';
   let shownExtHeader = false;
@@ -1512,6 +1523,11 @@ function renderNearby() {
 
 function setNearbyFilter(surface) {
   nearbyFilter = surface;
+  renderNearby();
+}
+
+function toggleHideRidden() {
+  nearbyHideRidden = !nearbyHideRidden;
   renderNearby();
 }
 
@@ -1682,7 +1698,7 @@ function renderMatchMap(cands) {
   if (!mapEl) return;
   if (!matchMapInstance) {
     matchMapInstance = L.map('match-map', { attributionControl: false });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(matchMapInstance);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd' }).addTo(matchMapInstance);
   }
   matchMapLayers.forEach(l => l.remove());
   matchMapLayers = [];
@@ -3002,10 +3018,10 @@ function renderQueuePanel() {
   const pauseNote = queuePaused
     ? `<div class="queue-paused-note">⏸️ Queue paused — background fetching and "Retry all" are on hold. A single "Retry" click still works.</div>`
     : '';
-
-  const failedCount = buckets['rate-limited'].length + buckets['not-found'].length;
-  const retryAllBtn = failedCount > 0
-    ? `<button class="queue-retry-all" onclick="retryAllFailedTrails()" ${queuePaused ? 'disabled title="Resume the queue first"' : ''}>🔄 Retry all failed (${failedCount})</button>`
+  // Explains rate-limiting/backoff behavior inline instead of interrupting
+  // with an alert() popup every time a fetch (background or manual) hits a 429.
+  const rateLimitNote = buckets['rate-limited'].length > 0
+    ? `<div class="queue-paused-note">🚫 The map data service (Overpass) is rate-limiting requests right now. Trails below are backing off automatically and will retry on their own — this usually clears within a minute or two. You can also retry sooner with a trail's own Retry button.</div>`
     : '';
 
   const trailLink = n => n.url ? `<a href="${n.url}" target="_blank" rel="noopener" class="queue-row-link" title="Research this trail">🔗</a>` : '';
@@ -3029,7 +3045,7 @@ function renderQueuePanel() {
     return `<div class="queue-section"><div class="queue-section-title">${title}${copyBtn}</div>${rows}</div>`;
   };
 
-  el.innerHTML = pauseBtn + pauseNote + summary + retryAllBtn +
+  el.innerHTML = pauseBtn + pauseNote + rateLimitNote + summary +
     section('🔄 Fetching now', buckets.fetching, {}) +
     section('🚫 Rate-limited — clears on its own, or retry now', buckets['rate-limited'], { showRetry: true, showIgnore: true }) +
     section('❓ Not found — worth investigating', buckets['not-found'], { showRetry: true, showIgnore: true, showCopyPrompt: buckets['not-found'].length > 0 }) +
@@ -3037,23 +3053,6 @@ function renderQueuePanel() {
     section(`⏳ Waiting in queue (${buckets.pending.length})`, buckets.pending, { showIgnore: true });
 
   updateQueueBadge();
-}
-
-// Retries every currently rate-limited/not-found trail, one at a time (never
-// concurrently — Overpass's free instance reliably fails under parallel load).
-// Trails that have exhausted their auto-retry cap are skipped here too — use
-// that trail's own "Retry" button to explicitly override the cap for just it.
-async function retryAllFailedTrails() {
-  const ids = NEARBY_TRAILS
-    .filter(n => ['rate-limited', 'not-found'].includes(getTrailQueueStatus(n.id)) && !autoRetryExhausted(n.id))
-    .map(n => n.id);
-  for (const id of ids) {
-    if (ignoredTrailIds.has(id)) continue;
-    await waitWhilePaused();
-    attemptedDirectFetch.delete(id);
-    await fetchTrailPolylineDirect(NEARBY_TRAILS.find(n => n.id === id));
-    refreshNearbyMarkers();
-  }
 }
 
 // Builds a ready-to-paste Claude Code prompt describing every currently
