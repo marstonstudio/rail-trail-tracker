@@ -2099,8 +2099,11 @@ async function fetchTrailPolylineDirectAttempt(trail) {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
     clearTimeout(timer);
-    if (resp.status === 429) return { segments: null, rateLimited: true };
-    if (!resp.ok) return { segments: null, rateLimited: false };
+    // Any non-2xx here (429, but also 5xx/504/etc. Overpass throws when its
+    // free instance is overloaded) means we don't actually know whether the
+    // trail has matching data — treat it like rate-limiting (transient,
+    // doesn't count against the not-found retry cap) rather than "not found".
+    if (!resp.ok) return { segments: null, rateLimited: true };
     const json = await resp.json();
 
     const namesToCheck = [trail.name, ...(trail.osmNames || [])];
@@ -2131,6 +2134,11 @@ async function fetchTrailPolylineDirectAttempt(trail) {
   } catch (e) {
     clearTimeout(timer);
     if (e.name !== 'AbortError') console.debug('Direct trail fetch failed for', trail.name, e.message);
+    // A client-side abort almost always means Overpass was too slow/overloaded
+    // to answer within OVERPASS_TIMEOUT_MS — not that the trail has no data.
+    // Treat it the same as rate-limiting so it doesn't burn through the
+    // not-found retry cap on transient server load.
+    if (e.name === 'AbortError') return { segments: null, rateLimited: true };
   }
   return { segments: null, rateLimited: false };
 }
