@@ -3528,6 +3528,61 @@ function updateQueueBadge() {
   badge.textContent = left > 0 ? `(${left})` : '';
 }
 
+// Fetches Overpass's own /api/status (plain text, e.g. "Rate limit: 2\nSlot
+// available after: 2026-01-01T00:00:05Z, in 5 seconds.\n...") and parses out
+// how many concurrent slots this IP gets and how many are free right now —
+// real numbers instead of a generic "it's rate-limiting" message. Cached
+// briefly so re-rendering the Queue tab repeatedly (it re-renders on every
+// status change) doesn't hammer this endpoint too.
+let overpassStatusCache = null;
+let overpassStatusFetchedAt = 0;
+const OVERPASS_STATUS_TTL_MS = 5000;
+
+async function fetchOverpassStatus() {
+  if (overpassStatusCache && Date.now() - overpassStatusFetchedAt < OVERPASS_STATUS_TTL_MS) {
+    return overpassStatusCache;
+  }
+  try {
+    const resp = await fetch('https://overpass-api.de/api/status');
+    if (!resp.ok) return null;
+    const text = await resp.text();
+    const limitMatch = text.match(/Rate limit:\s*(\d+)/);
+    const availableNowMatch = text.match(/(\d+) slots? available now\./);
+    const slotTimes = [...text.matchAll(/Slot available after:.*?in (-?\d+) seconds?\./g)].map(m => parseInt(m[1], 10));
+    const slotsTotal = limitMatch ? parseInt(limitMatch[1], 10) : null;
+    const slotsFreeNow = availableNowMatch ? parseInt(availableNowMatch[1], 10) : slotTimes.filter(s => s <= 0).length;
+    const nextSlotInSeconds = slotTimes.length ? Math.max(0, Math.min(...slotTimes)) : null;
+    const result = { slotsTotal, slotsFreeNow, nextSlotInSeconds };
+    overpassStatusCache = result;
+    overpassStatusFetchedAt = Date.now();
+    return result;
+  } catch (e) {
+    console.debug('Could not fetch Overpass status:', e.message);
+    return null;
+  }
+}
+
+// Fills in the live slot-availability detail after renderQueuePanel() has
+// already painted a placeholder — keeps the panel from blocking on a network
+// round-trip, and no-ops harmlessly if the user has since left the tab.
+async function updateRateLimitBannerDetail() {
+  const span = document.getElementById('queue-rate-limit-detail');
+  if (!span) return;
+  const status = await fetchOverpassStatus();
+  const span2 = document.getElementById('queue-rate-limit-detail'); // re-check: tab may have re-rendered mid-fetch
+  if (!span2) return;
+  if (!status || status.slotsTotal == null) {
+    span2.textContent = 'Live status unavailable right now.';
+    return;
+  }
+  const { slotsTotal, slotsFreeNow, nextSlotInSeconds } = status;
+  span2.textContent = slotsFreeNow > 0
+    ? `${slotsFreeNow} of ${slotsTotal} request slots free right now — a Retry should go through immediately.`
+    : (nextSlotInSeconds != null
+      ? `0 of ${slotsTotal} request slots free — next one opens up in about ${nextSlotInSeconds}s.`
+      : `0 of ${slotsTotal} request slots free right now.`);
+}
+
 function renderQueuePanel() {
   const el = document.getElementById('queue-content');
   if (!el) return;
@@ -3549,20 +3604,29 @@ function renderQueuePanel() {
     ? `<div class="queue-paused-note">⏸️ Queue paused — background fetching and "Retry all" are on hold. A single "Retry" click still works.</div>`
     : '';
   // Explains rate-limiting/backoff behavior inline instead of interrupting
-  // with an alert() popup every time a fetch (background or manual) hits a 429.
+  // with an alert() popup every time a fetch (background or manual) hits a
+  // 429. Each fetch already retries once internally after a short built-in
+  // wait — a trail landing here means that single retry also got rate-limited,
+  // so nothing further happens automatically until a manual Retry (or the
+  // trail's next page-load attempt). The detail span is filled in
+  // asynchronously by updateRateLimitBannerDetail() right after this render,
+  // with live slot counts from Overpass's own /api/status.
   const rateLimitNote = buckets['rate-limited'].length > 0
-    ? `<div class="queue-paused-note">🚫 The map data service (Overpass) is rate-limiting requests right now. Trails below are backing off automatically and will retry on their own — this usually clears within a minute or two. You can also retry sooner with a trail's own Retry button.</div>`
+    ? `<div class="queue-paused-note">🚫 The map data service (Overpass) rate-limited these trails — each already retried once automatically and is now waiting on a manual Retry (or the next page reload) rather than continuing to retry on its own.<br><span id="queue-rate-limit-detail">Checking live Overpass status…</span></div>`
     : '';
 
   const trailLink = n => n.url ? `<a href="${n.url}" target="_blank" rel="noopener" class="queue-row-link" title="Research this trail">🔗</a>` : '';
 
-  const section = (title, list, { showRetry, showIgnore, showUnignore, showCopyPrompt } = {}) => {
+  const section = (title, list, { showRetry, showIgnore, showUnignore, showCopyPrompt, showLastAttempt } = {}) => {
     if (!list.length) return '';
     const rows = list.map(n => {
       const exhausted = showRetry && autoRetryExhausted(n.id);
+      const lastAttempt = showLastAttempt && trailFetchStatus[n.id]?.updatedAt
+        ? ` <span class="queue-exhausted-note" title="When this trail's last fetch attempt was rate-limited">· ${Math.max(0, Math.round((Date.now() - trailFetchStatus[n.id].updatedAt) / 1000))}s ago</span>`
+        : '';
       return `
       <div class="queue-row">
-        <span class="queue-row-name">${escHtml(n.name)}${exhausted ? ' <span class="queue-exhausted-note" title="Failed ' + MAX_AUTO_RETRIES + '+ times — auto-retry stopped, Retry still works manually">⏹ auto-retry stopped</span>' : ''}</span>
+        <span class="queue-row-name">${escHtml(n.name)}${exhausted ? ' <span class="queue-exhausted-note" title="Failed ' + MAX_AUTO_RETRIES + '+ times — auto-retry stopped, Retry still works manually">⏹ auto-retry stopped</span>' : ''}${lastAttempt}</span>
         ${trailLink(n)}
         ${showRetry ? `<button class="icon-btn" onclick="forceLoadTrailLine('${n.id}')">Retry</button>` : ''}
         ${showIgnore ? `<button class="icon-btn" onclick="ignoreTrail('${n.id}')" title="Stop retrying this trail">Ignore</button>` : ''}
@@ -3577,12 +3641,13 @@ function renderQueuePanel() {
 
   el.innerHTML = pauseBtn + pauseNote + rateLimitNote + summary +
     section('🔄 Fetching now', buckets.fetching, {}) +
-    section('🚫 Rate-limited — clears on its own, or retry now', buckets['rate-limited'], { showRetry: true, showIgnore: true }) +
+    section('🚫 Rate-limited — retry now or wait for the next page load', buckets['rate-limited'], { showRetry: true, showIgnore: true, showLastAttempt: true }) +
     section('❓ Not found — worth investigating', buckets['not-found'], { showRetry: true, showIgnore: true, showCopyPrompt: buckets['not-found'].length > 0 }) +
     section(`🙈 Ignored (${buckets.ignored.length})`, buckets.ignored, { showUnignore: true }) +
     section(`⏳ Waiting in queue (${buckets.pending.length})`, buckets.pending, { showIgnore: true });
 
   updateQueueBadge();
+  if (buckets['rate-limited'].length > 0) updateRateLimitBannerDetail();
 }
 
 // Builds a ready-to-paste Claude Code prompt describing every currently
