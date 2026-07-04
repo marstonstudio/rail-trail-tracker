@@ -1129,6 +1129,7 @@ const NEARBY_TRAILS = [
       { name:'Contoocook Lake boat launch, Rindge', lat:42.7885865, lng:-72.0113190 },
     ] },
   { id:'n22', name:'Peterborough Rail Trail',                state:'NH',    miles:6,    distMi:43, surface:'Gravel',        lat:42.867, lng:-71.950, url:'https://www.traillink.com/trail/peterborough-and-hillsborough-railroad-trail/',   desc:'Peterborough to Hancock through the scenic Monadnock Region',
+    osmNames:['Old Railroad Trail', 'Peterborough and Hillsborough Railroad'],
     parking:[
       { name:'Scott Mitchell Rd lot, Peterborough', lat:42.9302070, lng:-71.9429302 },
     ] },
@@ -1173,6 +1174,7 @@ const NEARBY_TRAILS = [
       { name:'Rt 1 trailhead, North Hampton', lat:42.9965868, lng:-70.8177401 },
     ] },
   { id:'n69', name:'Henniker & Hopkinton Rail Trails',       state:'NH',    miles:6.7,  distMi:54, surface:'Gravel',         lat:43.180, lng:-71.820, url:'https://www.traillink.com/trail/henniker--hopkinton-rail-trails/',              desc:'Two connected former rail corridors along the Contoocook River in central NH, offering wooded scenery and riverside views through Henniker and Hopkinton',
+    osmNames:['Stevens Rail Trail'],
     parking:[
       { name:'Depot Hill Rd lot, Henniker', lat:43.1697541, lng:-71.8198558 },
       { name:'Hopkinton Dam, West Hopkinton', lat:43.1885532, lng:-71.7474782 },
@@ -1273,7 +1275,8 @@ const NEARBY_TRAILS = [
       { name:'Depot Rd lot, Chatham', lat:41.6855318, lng:-69.9617291 },
       { name:'Pleasant Lake Ave lot, Harwich', lat:41.7064333, lng:-70.0772470 },
     ] },
-  { id:'n74', name:'Toonerville Rail-Trail',                 state:'VT',    miles:3.2,  distMi:85, surface:'Paved',          lat:43.350, lng:-72.480, url:'https://www.traillink.com/trail/toonerville-rail-trail/',                      desc:'Paved trail on the former Springfield Electric Railway (1896) shadowing the Black River through Springfield VT to the Connecticut River corridor',
+  { id:'n74', name:'Toonerville Rail-Trail',                 state:'VT',    miles:3.2,  distMi:85, surface:'Paved',          lat:43.290, lng:-72.460, url:'https://www.traillink.com/trail/toonerville-rail-trail/',                      desc:'Paved trail on the former Springfield Electric Railway (1896) shadowing the Black River through Springfield VT to the Connecticut River corridor',
+    osmNames:['Toonerville Trail'],
     parking:[
       { name:'280 Clinton St lot, Springfield', lat:43.2851879, lng:-72.4712097 },
     ] },
@@ -1362,6 +1365,7 @@ const NEARBY_TRAILS = [
       { name:'100 Maine Ave (Hannaford) lot, Gardiner', lat:44.2351890, lng:-69.7720930 },
     ] },
   { id:'n83', name:'O&W Rail Trail',                        state:'NY',    miles:18.0, distMi:153, surface:'Paved/Gravel',   lat:41.780, lng:-74.150, url:'https://www.traillink.com/trail/ow-rail-trail-(ulster-county)/',               desc:'Former NY Ontario & Western Railway through Ulster County, transitioning from paved near Kingston to wooded gravel through High Falls, with a railroad tunnel',
+    osmNames:['Kerhonkson-Accord O&W Rail Trail', 'The O&W Rail Trail'],
     parking:[
       { name:'Leggett Rd lot, Stone Ridge/Marbletown', lat:41.8433064, lng:-74.1330172 },
     ] },
@@ -1381,6 +1385,7 @@ const NEARBY_TRAILS = [
       { name:'543 Main St trailhead, St Johnsbury', lat:44.4099266, lng:-72.0182061 },
     ] },
   { id:'n85', name:'Heritage Trail',                        state:'NY',    miles:19.4, distMi:165, surface:'Paved/Gravel',   lat:41.350, lng:-74.190, url:'https://www.traillink.com/trail/heritage-trail-(ny)/',                        desc:'Former Erie Railroad main line through Orange County NY towns of Goshen, Chester, Monroe, and Harriman, with the Chester Depot Museum along the route',
+    osmNames:['Orange County Heritage Trail', 'Orange Heritage Trailway', 'Orange Heritage Trail'],
     parking:[
       { name:'2 S Church St lot, Goshen', lat:41.4017601, lng:-74.3238314 },
       { name:'Chester Depot Museum, Chester', lat:41.3624533, lng:-74.2714981 },
@@ -1421,6 +1426,7 @@ const NEARBY_TRAILS = [
       { name:'Schooleys Mountain Rd lot, Long Valley', lat:40.7816814, lng:-74.7592328 },
     ] },
   { id:'n92', name:'Four Seasons Adventure Trail',          state:'ME',    miles:29.9, distMi:220, surface:'Crushed stone',  lat:45.160, lng:-69.160, url:'https://www.traillink.com/trail/four-seasons-adventure-trail/',               desc:'Nearly 30-mile rail-trail on the former Dexter & Newport Railroad through central Maine, skirting scenic lakes between Newport, Corinna, Dexter, and Dover-Foxcroft',
+    osmNames:['Newport/Dover-Foxcroft Rail Trail', 'Dover-Foxcroft Recreational Rail Trail'],
     parking:[
       { name:'23 Spring St lot, Newport', lat:44.8347701, lng:-69.2763140 },
       { name:'Dover-Foxcroft trailhead', lat:45.1834890, lng:-69.2276000 },
@@ -1806,6 +1812,8 @@ async function fetchAllNearbyTrailLines() {
     await waitWhilePaused();
     await fetchTrailPolylineDirect(n);
     refreshNearbyMarkers();
+    // Dev-only pacing (see BACKGROUND_FETCH_PACE_MS) — a no-op in production.
+    if (BACKGROUND_FETCH_PACE_MS > 0) await sleep(BACKGROUND_FETCH_PACE_MS);
   }
 }
 
@@ -2278,7 +2286,7 @@ const fetchedBboxKeys = new Set();
 // NAME_STOP word list, distance sanity checks, scoring thresholds). Cached
 // entries stamped with an older version are treated as stale and silently
 // re-fetched — no manual cache-clearing needed on deploy.
-const TRAIL_GEOM_LOGIC_VERSION = 3; // v3: distance tiebreak for same-score name matches (fixes Mass Central RT segments stealing each other's geometry)
+const TRAIL_GEOM_LOGIC_VERSION = 4; // v4: added osmNames aliases for n22/n69/n74/n83/n85/n92 (real OSM names differ from declared trail names)
 
 // Load every trail's previously-cached geometry from the server in one request.
 // Entries cached under an older matching-logic version are skipped (left
@@ -2317,6 +2325,25 @@ async function persistTrailGeometry(trailId, segments) {
 const OVERPASS_URL        = 'https://overpass-api.de/api/interpreter';
 const OVERPASS_TIMEOUT_MS = 12000;
 const MAX_CACHED_PTS      = 300;
+
+// True only for a real deployed build (server.js stamps a real BUILD_SHA into
+// this meta tag; local dev leaves the raw '__BUILD_SHA__' placeholder in
+// place). Used to pace the background trail-geometry fetch loop — local dev
+// re-populates the cache far more often (page reloads during active
+// development, cache-busting version bumps while iterating on matching logic,
+// etc.) and shares Overpass's public rate limit with the deployed app and
+// everyone else using it, so dev should go slow and deliberate while
+// production can run at full speed against the same shared quota.
+const IS_PROD_BUILD = (() => {
+  const sha = document.querySelector('meta[name="build-sha"]')?.content || '';
+  return !!sha && sha !== '__BUILD_SHA__';
+})();
+// Extra delay inserted between each trail in the background fetch loop, on
+// top of the per-request rate-limit/retry backoff already in
+// fetchTrailPolylineDirect() — zero in production (go as fast as the retry
+// backoff allows), a few seconds in dev to avoid burning through the shared
+// Overpass quota just from routine local iteration.
+const BACKGROUND_FETCH_PACE_MS = IS_PROD_BUILD ? 0 : 4000;
 
 // Stop-words excluded when comparing trail names.
 // Deliberately excludes geographically-distinctive words like river/creek/lake/pond —
