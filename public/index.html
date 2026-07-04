@@ -731,6 +731,19 @@
       border-radius: 5px;
     }
     .lf-popup-links a:hover { background: var(--blue-light); }
+    .lf-popup-parking { margin-top: 7px; display: flex; flex-direction: column; gap: 4px; }
+    .lf-popup-parking a {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--blue);
+      text-decoration: none;
+      padding: 3px 7px;
+      border: 1px solid #cde;
+      border-radius: 5px;
+      white-space: normal;
+      line-height: 1.3;
+    }
+    .lf-popup-parking a:hover { background: var(--blue-light); }
     .lf-popup-log {
       margin-top: 7px;
       padding: 5px 10px;
@@ -784,6 +797,7 @@
     <div class="map-legend">
       <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Ridden</div>
       <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div> Nearby trail</div>
+      <div class="legend-item"><div class="legend-dot" style="background:white;border:2px solid var(--blue);border-radius:4px;font:700 8px/1 sans-serif;color:var(--blue);display:flex;align-items:center;justify-content:center">P</div> Parking</div>
     </div>
   </div>
   <div class="sidebar">
@@ -917,121 +931,500 @@
 // ─── Nearby trail data (researched, within 100 mi of Concord MA) ──────────────
 const NEARBY_TRAILS = [
   // ── 0–15 mi from Concord MA ──────────────────────────────────────────────────
-  { id:'n01', name:'Bruce Freeman Rail Trail',              state:'MA',    miles:20,   distMi:5,  surface:'Paved',         lat:42.5077, lng:-71.4124, url:'https://www.traillink.com/trail/bruce-freeman-rail-trail/',                        desc:'Lowell to Framingham through Concord, Acton & Sudbury' },
-  { id:'n97', name:'Reformatory Branch Trail',              state:'MA',    miles:3.9,  distMi:3,  surface:'Dirt/Gravel',   lat:42.4843, lng:-71.2921, url:'https://www.traillink.com/trail/reformatory-branch-trail/',                       desc:'Former Boston & Lowell Railroad branch linking Bedford Depot Park to Concord\'s Old North Bridge through wildlife refuges' },
-  { id:'n02', name:'Minuteman Commuter Bikeway',             state:'MA',    miles:10.1, distMi:5,  surface:'Paved',         lat:42.476, lng:-71.257, url:'https://www.traillink.com/trail/minuteman-commuter-bikeway/',                       desc:'Bedford to Alewife through Lexington & Arlington' },
-  { id:'n95', name:'Somerville Community Path',              state:'MA',    miles:3.2,  distMi:8,  surface:'Paved',          lat:42.395, lng:-71.118, url:'https://www.traillink.com/trail/somerville-community-path/',                   desc:'Former Fitchburg Cutoff corridor linking Alewife to East Cambridge through Davis Square with direct access to Green and Red Line stations' },
-  { id:'n03', name:'Assabet River Rail Trail',               state:'MA',    miles:12,   distMi:12, surface:'Paved',         lat:42.370, lng:-71.553, url:'https://www.traillink.com/trail/assabet-river-rail-trail/',                        desc:'Marlborough through Hudson, Stow, Maynard & Acton' },
-  { id:'n04', name:'Northern Strand Community Trail',        state:'MA',    miles:10,   distMi:14, surface:'Paved',         lat:42.4307, lng:-71.0431, url:'https://www.traillink.com/trail/northern-strand-community-trail/',                  desc:'Everett to Lynn through Malden, Revere & Saugus — bike to the sea' },
-  { id:'n05', name:'Tri-Community Greenway',                 state:'MA',    miles:6.5,  distMi:15, surface:'Paved',         lat:42.476, lng:-71.133, url:'https://www.traillink.com/trail/tri-community-greenway/',                          desc:'Stoneham to Woburn through Winchester' },
+  { id:'n01', name:'Bruce Freeman Rail Trail',              state:'MA',    miles:20,   distMi:5,  surface:'Paved',         lat:42.5077, lng:-71.4124, url:'https://www.traillink.com/trail/bruce-freeman-rail-trail/',                        desc:'Lowell to Framingham through Concord, Acton & Sudbury',
+    parking:[
+      { name:'Chelmsford Center for the Arts, 1A North Rd, Chelmsford', lat:42.5977028, lng:-71.3520585 },
+      { name:'Gerow Park, 369 Commonwealth Ave, Concord',               lat:42.4633215, lng:-71.3977902 },
+      { name:'Davis Field, 195 North Rd, Sudbury',                      lat:42.4179819, lng:-71.3947585 },
+    ] },
+  { id:'n97', name:'Reformatory Branch Trail',              state:'MA',    miles:3.9,  distMi:3,  surface:'Dirt/Gravel',   lat:42.4843, lng:-71.2921, url:'https://www.traillink.com/trail/reformatory-branch-trail/',                       desc:'Former Boston & Lowell Railroad branch linking Bedford Depot Park to Concord\'s Old North Bridge through wildlife refuges',
+    parking:[
+      { name:'Bedford Depot Park, Railroad Ave, Bedford', lat:42.4855618, lng:-71.2836295 },
+      { name:'Keyes Rd lot, Concord',                     lat:42.4618429, lng:-71.3525761 },
+    ] },
+  { id:'n02', name:'Minuteman Commuter Bikeway',             state:'MA',    miles:10.1, distMi:5,  surface:'Paved',         lat:42.476, lng:-71.257, url:'https://www.traillink.com/trail/minuteman-commuter-bikeway/',                       desc:'Bedford to Alewife through Lexington & Arlington',
+    parking:[
+      { name:'Bedford Depot Park, Loomis St, Bedford', lat:42.4878782, lng:-71.2738916 },
+      { name:'Margaret St lot, Arlington',             lat:42.4027239, lng:-71.1467090 },
+      { name:'Alewife Station garage, Cambridge',      lat:42.3960020, lng:-71.1412774 },
+    ] },
+  { id:'n95', name:'Somerville Community Path',              state:'MA',    miles:3.2,  distMi:8,  surface:'Paved',          lat:42.395, lng:-71.118, url:'https://www.traillink.com/trail/somerville-community-path/',                   desc:'Former Fitchburg Cutoff corridor linking Alewife to East Cambridge through Davis Square with direct access to Green and Red Line stations',
+    parking:[
+      { name:'Alewife Linear Park, Cambridge', lat:42.3978200, lng:-71.1319826 },
+      { name:'Paul Revere Park, Charlestown, Boston', lat:42.3701202, lng:-71.0623274 },
+    ] },
+  { id:'n03', name:'Assabet River Rail Trail',               state:'MA',    miles:12,   distMi:12, surface:'Paved',         lat:42.370, lng:-71.553, url:'https://www.traillink.com/trail/assabet-river-rail-trail/',                        desc:'Marlborough through Hudson, Stow, Maynard & Acton',
+    parking:[
+      { name:'Rawlins Ave lot, Marlborough', lat:42.3471743, lng:-71.5528806 },
+      { name:'Wilkins St lot, Hudson',       lat:42.3947308, lng:-71.5378745 },
+      { name:'Maple St lot, Acton',          lat:42.4601440, lng:-71.4595149 },
+    ] },
+  { id:'n04', name:'Northern Strand Community Trail',        state:'MA',    miles:10,   distMi:14, surface:'Paved',         lat:42.4307, lng:-71.0431, url:'https://www.traillink.com/trail/northern-strand-community-trail/',                  desc:'Everett to Lynn through Malden, Revere & Saugus — bike to the sea',
+    parking:[
+      { name:'Gateway Center lot, Everett',        lat:42.3987003, lng:-71.0705426 },
+      { name:'Rt 60 lot near Malden High, Malden', lat:42.4267650, lng:-71.0650665 },
+    ] },
+  { id:'n05', name:'Tri-Community Greenway',                 state:'MA',    miles:6.5,  distMi:15, surface:'Paved',         lat:42.476, lng:-71.133, url:'https://www.traillink.com/trail/tri-community-greenway/',                          desc:'Stoneham to Woburn through Winchester',
+    parking:[
+      { name:'Gould St lot, Stoneham', lat:42.4803978, lng:-71.0939115 },
+      { name:'Wedgemere Station, 25 Mystic Valley Pkwy, Winchester', lat:42.4445699, lng:-71.1403163 },
+    ] },
   { id:'n06', name:'Wakefield-Lynnfield Rail Trail',         state:'MA',    miles:5,    distMi:15, surface:'Paved',         lat:42.510, lng:-71.062, url:'https://www.traillink.com/trail/wakefield-lynnfield-rail-trail/',                   desc:'Wakefield to Lynnfield along a former railroad corridor' },
-  { id:'n61', name:'Cochituate Rail Trail',                  state:'MA',    miles:4.5,  distMi:15, surface:'Paved',         lat:42.295, lng:-71.362, url:'https://www.traillink.com/trail/cochituate-rail-trail/',                          desc:'Natick to Framingham through Saxonville along the former Old Colony Railroad' },
-  { id:'n63', name:'Middleton Rail Trail',                   state:'MA',    miles:4.5,  distMi:18, surface:'Crushed stone',  lat:42.590, lng:-71.010, url:'https://www.traillink.com/trail/middleton-rail-trail/',                          desc:'Former Essex Railroad corridor linking North Andover through Middleton toward Danvers on the north shore' },
-  { id:'n64', name:'Squannacook River Rail Trail',           state:'MA',    miles:3.7,  distMi:20, surface:'Crushed stone',  lat:42.670, lng:-71.700, url:'https://www.traillink.com/trail/squannacook-river-rail-trail/',                   desc:'Former Boston & Maine Greenville Branch following the Squannacook River through Townsend and Groton' },
+  { id:'n61', name:'Cochituate Rail Trail',                  state:'MA',    miles:4.5,  distMi:15, surface:'Paved',         lat:42.295, lng:-71.362, url:'https://www.traillink.com/trail/cochituate-rail-trail/',                          desc:'Natick to Framingham through Saxonville along the former Old Colony Railroad',
+    parking:[
+      { name:'Mechanic St lot, Natick',            lat:42.2881078, lng:-71.3520067 },
+      { name:'Central St, Saxonville, Framingham', lat:42.3248815, lng:-71.4009927 },
+    ] },
+  { id:'n63', name:'Middleton Rail Trail',                   state:'MA',    miles:4.5,  distMi:18, surface:'Crushed stone',  lat:42.590, lng:-71.010, url:'https://www.traillink.com/trail/middleton-rail-trail/',                          desc:'Former Essex Railroad corridor linking North Andover through Middleton toward Danvers on the north shore',
+    parking:[
+      { name:'210 Maple St lot, Middleton', lat:42.5961884, lng:-70.9949565 },
+      { name:'Central St lot near Howe-Manning School, Middleton', lat:42.5958262, lng:-71.0149294 },
+    ] },
+  { id:'n64', name:'Squannacook River Rail Trail',           state:'MA',    miles:3.7,  distMi:20, surface:'Crushed stone',  lat:42.670, lng:-71.700, url:'https://www.traillink.com/trail/squannacook-river-rail-trail/',                   desc:'Former Boston & Maine Greenville Branch following the Squannacook River through Townsend and Groton',
+    parking:[
+      { name:'1 Center St lot, Townsend', lat:42.6650620, lng:-71.7049980 },
+    ] },
   // ── 20–30 mi ────────────────────────────────────────────────────────────────
-  { id:'n07', name:'Nashua River Rail Trail',                state:'MA/NH', miles:12,   distMi:22, surface:'Paved',         lat:42.721, lng:-71.608, url:'https://www.traillink.com/trail/nashua-river-rail-trail/',                        desc:'Ayer MA to Nashua NH through Groton, Pepperell & Dunstable' },
-  { id:'n08', name:'Windham Rail Trail',                     state:'NH',    miles:5.3,  distMi:24, surface:'Paved',         lat:42.812, lng:-71.303, url:'https://www.traillink.com/trail/windham-rail-trail/',                             desc:'Scenic paved trail through Windham, NH' },
-  { id:'n09', name:'Salem Bike-Ped Corridor',                state:'NH',    miles:5.2,  distMi:24, surface:'Paved/Gravel',  lat:42.786, lng:-71.240, url:'https://fsbpc.org',                                                              desc:'Salem to Windham NH — 2 miles paved, rest crushed stone' },
-  { id:'n62', name:'Danvers Rail Trail',                     state:'MA',    miles:2.6,  distMi:24, surface:'Paved',         lat:42.574, lng:-70.937, url:'https://www.traillink.com/trail/danvers-rail-trail/',                          desc:'Danvers to Beverly along a former rail corridor on the north shore' },
-  { id:'n93', name:'Twin Cities Rail Trail',                 state:'MA',    miles:4.0,  distMi:25, surface:'Paved',          lat:42.585, lng:-71.800, url:'https://www.traillink.com/trail/twin-cities-rail-trail/',                     desc:'Former Fitchburg & Worcester Railroad corridor connecting downtown Fitchburg and Leominster past parks, local businesses, and Fitchburg Municipal Airport' },
-  { id:'n94', name:'Marblehead Rail Trail',                  state:'MA',    miles:3.3,  distMi:27, surface:'Paved/Gravel',   lat:42.500, lng:-70.895, url:'https://www.traillink.com/trail/marblehead-rail-trail/',                     desc:'Y-shaped former Eastern Railroad spur (1839) connecting Marblehead, Salem, and Swampscott; part of the developing Border to Boston Trail and East Coast Greenway' },
-  { id:'n10', name:'Potanipo Rail Trail',                    state:'NH',    miles:6.5,  distMi:25, surface:'Gravel',        lat:42.729, lng:-71.665, url:'https://plcnh.org/potanipo-rail-trail/',                                          desc:'Brookline to Hollis through quiet southern NH countryside' },
-  { id:'n11', name:'Upper Charles Rail Trail',               state:'MA',    miles:9,    distMi:25, surface:'Paved',         lat:42.195, lng:-71.456, url:'https://www.traillink.com/trail/upper-charles-rail-trail/',                        desc:'Holliston to Milford through the Upper Charles River valley' },
-  { id:'n98',  name:'Mass Central RT — Weston-Wayland Segment', state:'MA',  miles:4.9,  distMi:10, surface:'Paved',         lat:42.366, lng:-71.375, url:'https://www.masscentralrailtrail.org/wayland',                                   desc:'Flat paved segment past the historic Wayland Freight House, Weston Depot, and a preserved railway turntable' },
-  { id:'n99',  name:'Mass Central RT — Waltham Segment',        state:'MA',  miles:3.0,  distMi:12, surface:'Paved',         lat:42.383, lng:-71.245, url:'https://www.masscentralrailtrail.org/waltham',                                   desc:'Paved urban segment through Waltham with a restored 1880s lattice-truss railroad bridge' },
-  { id:'n100', name:'Mass Central RT — Sudbury-Hudson Segment', state:'MA',  miles:7.6,  distMi:15, surface:'Paved',         lat:42.383, lng:-71.530, url:'https://www.masscentralrailtrail.org/current-mcrt-projects',                      desc:'Newly built paved segment through Sudbury, Marlborough, Stow & Hudson past the former South Sudbury rail crossing' },
-  { id:'n101', name:'Mass Central RT — Rutland-Holden Segment', state:'MA',  miles:4,    distMi:40, surface:'Stone dust',    lat:42.380, lng:-71.950, url:'https://www.wachusettgreenways.org/wordpress/',                                    desc:'Wachusett Greenways stone-dust segment continuing toward Holden and West Boylston, with a few short on-road detours' },
-  { id:'n102', name:'Mass Central RT — Barre-Rutland Segment',  state:'MA',  miles:8.8,  distMi:45, surface:'Stone dust',    lat:42.401, lng:-72.020, url:'https://www.wachusettgreenways.org/wordpress/',                                    desc:'Wachusett Greenways stone-dust trail through rural woodlands featuring the Charnock Hill and Pommogussett tunnels' },
-  { id:'n103', name:'Mass Central RT — New Braintree & Hardwick', state:'MA', miles:3.2, distMi:55, surface:'Stone dust/Gravel', lat:42.318, lng:-72.150, url:'https://eqlt.org/our-properties/mass-central-rail-trail-new-braintree-and-hardwick/', desc:'East Quabbin Land Trust-maintained segment crossing the Ware River twice via lattice and pony truss bridges' },
-  { id:'n104', name:'Mass Central RT — Ware River Valley',      state:'MA',  miles:5,    distMi:58, surface:'Stone dust/Paved', lat:42.263, lng:-72.240, url:'https://bikeitorhikeit.org/mass_central_rail_trail_ware_river_valley_branch.htm',   desc:'Small-town trail through Ware along the Ware River, with a paved connector into Grenville Park' },
-  { id:'n105', name:'Mass Central RT — Belchertown Greenway',   state:'MA',  miles:3.9,  distMi:80, surface:'Unimproved',    lat:42.275, lng:-72.400, url:'https://www.masscentralrailtrail.org/belchertown',                                desc:'Rustic unpaved corridor near the historic Jabish Brook trestle bridge, popular with equestrians, hikers & mountain bikers' },
-  { id:'n13', name:'Blackstone River Greenway',              state:'MA',    miles:20,   distMi:28, surface:'Paved/mixed',   lat:42.198, lng:-71.793, url:'https://www.traillink.com/trail/blackstone-river-greenway/',                      desc:'Worcester south to RI border along the historic Blackstone River' },
-  { id:'n14', name:'Mason-Greenville Rail Trail',            state:'NH',    miles:9.1,  distMi:28, surface:'Gravel',        lat:42.748, lng:-71.755, url:'https://www.traillink.com/trail/mason-railroad-trail/',                           desc:'Mason to Greenville NH through quiet rural southern NH' },
+  { id:'n07', name:'Nashua River Rail Trail',                state:'MA/NH', miles:12,   distMi:22, surface:'Paved',         lat:42.721, lng:-71.608, url:'https://www.traillink.com/trail/nashua-river-rail-trail/',                        desc:'Ayer MA to Nashua NH through Groton, Pepperell & Dunstable',
+    parking:[
+      { name:'Ayer Center lot, 3 Groton St, Ayer', lat:42.5615000, lng:-71.5899200 },
+      { name:'Court St lot, Groton',               lat:42.6079074, lng:-71.5735685 },
+      { name:'Hollis St lot, Dunstable',           lat:42.7023003, lng:-71.5391957 },
+    ] },
+  { id:'n08', name:'Windham Rail Trail',                     state:'NH',    miles:5.3,  distMi:24, surface:'Paved',         lat:42.812, lng:-71.303, url:'https://www.traillink.com/trail/windham-rail-trail/',                             desc:'Scenic paved trail through Windham, NH',
+    parking:[
+      { name:'Windham Depot lot, 6 Depot Rd, Windham', lat:42.8423506, lng:-71.2983744 },
+    ] },
+  { id:'n09', name:'Salem Bike-Ped Corridor',                state:'NH',    miles:5.2,  distMi:24, surface:'Paved/Gravel',  lat:42.786, lng:-71.240, url:'https://fsbpc.org',                                                              desc:'Salem to Windham NH — 2 miles paved, rest crushed stone',
+    parking:[
+      { name:'Range Rd lot near Salem-Windham line', lat:42.7845655, lng:-71.2945741 },
+    ] },
+  { id:'n62', name:'Danvers Rail Trail',                     state:'MA',    miles:2.6,  distMi:24, surface:'Paved',         lat:42.574, lng:-70.937, url:'https://www.traillink.com/trail/danvers-rail-trail/',                          desc:'Danvers to Beverly along a former rail corridor on the north shore',
+    parking:[
+      { name:'150 Andover St lot, Danvers', lat:42.5568964, lng:-70.9698227 },
+      { name:'Putnamville Park, 9 Wenham St, Danvers', lat:42.5868690, lng:-70.9363080 },
+    ] },
+  { id:'n93', name:'Twin Cities Rail Trail',                 state:'MA',    miles:4.0,  distMi:25, surface:'Paved',          lat:42.585, lng:-71.800, url:'https://www.traillink.com/trail/twin-cities-rail-trail/',                     desc:'Former Fitchburg & Worcester Railroad corridor connecting downtown Fitchburg and Leominster past parks, local businesses, and Fitchburg Municipal Airport',
+    parking:[
+      { name:'DeCaria Park, First St, Fitchburg', lat:42.5784159, lng:-71.7925018 },
+      { name:'Doyle Field, 100 Priest St, Leominster', lat:42.5370203, lng:-71.7520004 },
+    ] },
+  { id:'n94', name:'Marblehead Rail Trail',                  state:'MA',    miles:3.3,  distMi:27, surface:'Paved/Gravel',   lat:42.500, lng:-70.895, url:'https://www.traillink.com/trail/marblehead-rail-trail/',                     desc:'Y-shaped former Eastern Railroad spur (1839) connecting Marblehead, Salem, and Swampscott; part of the developing Border to Boston Trail and East Coast Greenway',
+    parking:[
+      { name:'Bessom St lot, Marblehead', lat:42.5006451, lng:-70.8595098 },
+    ] },
+  { id:'n10', name:'Potanipo Rail Trail',                    state:'NH',    miles:6.5,  distMi:25, surface:'Gravel',        lat:42.729, lng:-71.665, url:'https://plcnh.org/potanipo-rail-trail/',                                          desc:'Brookline to Hollis through quiet southern NH countryside',
+    parking:[
+      { name:'Bohanon Bridge Rd lot, Brookline', lat:42.7189936, lng:-71.6504208 },
+      { name:'28 Oak Hill Rd lot (softball field), Brookline', lat:42.7165260, lng:-71.6507720 },
+    ] },
+  { id:'n11', name:'Upper Charles Rail Trail',               state:'MA',    miles:9,    distMi:25, surface:'Paved',         lat:42.195, lng:-71.456, url:'https://www.traillink.com/trail/upper-charles-rail-trail/',                        desc:'Holliston to Milford through the Upper Charles River valley',
+    parking:[
+      { name:'Central St lot, Holliston', lat:42.1982181, lng:-71.4058737 },
+      { name:'Cedar St (Rt 85) lot, Milford', lat:42.1584670, lng:-71.5069972 },
+    ] },
+  { id:'n98',  name:'Mass Central RT — Weston-Wayland Segment', state:'MA',  miles:4.9,  distMi:10, surface:'Paved',         lat:42.366, lng:-71.375, url:'https://www.masscentralrailtrail.org/wayland',                                   desc:'Flat paved segment past the historic Wayland Freight House, Weston Depot, and a preserved railway turntable',
+    parking:[
+      { name:'Wayland Depot, 1 Cochituate Rd, Wayland', lat:42.3643111, lng:-71.3617904 },
+      { name:'Church St lot, Weston',                   lat:42.3699762, lng:-71.2957270 },
+    ] },
+  { id:'n99',  name:'Mass Central RT — Waltham Segment',        state:'MA',  miles:3.0,  distMi:12, surface:'Paved',         lat:42.383, lng:-71.245, url:'https://www.masscentralrailtrail.org/waltham',                                   desc:'Paved urban segment through Waltham with a restored 1880s lattice-truss railroad bridge',
+    parking:[
+      { name:'51 Church St lot, Waltham', lat:42.3775466, lng:-71.2344848 },
+    ] },
+  { id:'n100', name:'Mass Central RT — Sudbury-Hudson Segment', state:'MA',  miles:7.6,  distMi:15, surface:'Paved',         lat:42.383, lng:-71.530, url:'https://www.masscentralrailtrail.org/current-mcrt-projects',                      desc:'Newly built paved segment through Sudbury, Marlborough, Stow & Hudson past the former South Sudbury rail crossing',
+    parking:[
+      { name:'Union Ave lot near old Sudbury Depot, South Sudbury', lat:42.3611357, lng:-71.4221364 },
+      { name:'Wilkins St lot, Hudson', lat:42.3947308, lng:-71.5378745 },
+    ] },
+  { id:'n101', name:'Mass Central RT — Rutland-Holden Segment', state:'MA',  miles:4,    distMi:40, surface:'Stone dust',    lat:42.380, lng:-71.950, url:'https://www.wachusettgreenways.org/wordpress/',                                    desc:'Wachusett Greenways stone-dust segment continuing toward Holden and West Boylston, with a few short on-road detours',
+    parking:[
+      { name:'River St lot, Holden', lat:42.3744591, lng:-71.8244204 },
+    ] },
+  { id:'n102', name:'Mass Central RT — Barre-Rutland Segment',  state:'MA',  miles:8.8,  distMi:45, surface:'Stone dust',    lat:42.401, lng:-72.020, url:'https://www.wachusettgreenways.org/wordpress/',                                    desc:'Wachusett Greenways stone-dust trail through rural woodlands featuring the Charnock Hill and Pommogussett tunnels',
+    parking:[
+      { name:'Wachusett St lot, Holden', lat:42.3773781, lng:-71.8509899 },
+    ] },
+  { id:'n103', name:'Mass Central RT — New Braintree & Hardwick', state:'MA', miles:3.2, distMi:55, surface:'Stone dust/Gravel', lat:42.318, lng:-72.150, url:'https://eqlt.org/our-properties/mass-central-rail-trail-new-braintree-and-hardwick/', desc:'East Quabbin Land Trust-maintained segment crossing the Ware River twice via lattice and pony truss bridges',
+    parking:[
+      { name:'Former New Braintree Depot, Hardwick Rd & West Rd', lat:42.3166391, lng:-72.1265444 },
+    ] },
+  { id:'n104', name:'Mass Central RT — Ware River Valley',      state:'MA',  miles:5,    distMi:58, surface:'Stone dust/Paved', lat:42.263, lng:-72.240, url:'https://bikeitorhikeit.org/mass_central_rail_trail_ware_river_valley_branch.htm',   desc:'Small-town trail through Ware along the Ware River, with a paved connector into Grenville Park',
+    parking:[
+      { name:'Church St lot, Ware', lat:42.2644029, lng:-72.2359918 },
+    ] },
+  { id:'n105', name:'Mass Central RT — Belchertown Greenway',   state:'MA',  miles:3.9,  distMi:80, surface:'Unimproved',    lat:42.275, lng:-72.400, url:'https://www.masscentralrailtrail.org/belchertown',                                desc:'Rustic unpaved corridor near the historic Jabish Brook trestle bridge, popular with equestrians, hikers & mountain bikers',
+    parking:[
+      { name:'Warren Wright Rd trailhead, Belchertown', lat:42.3330006, lng:-72.4658370 },
+      { name:'Depot St lot, Belchertown', lat:42.2135822, lng:-72.3469239 },
+    ] },
+  { id:'n13', name:'Blackstone River Greenway',              state:'MA',    miles:20,   distMi:28, surface:'Paved/mixed',   lat:42.198, lng:-71.793, url:'https://www.traillink.com/trail/blackstone-river-greenway/',                      desc:'Worcester south to RI border along the historic Blackstone River',
+    parking:[
+      { name:'Blackstone Heritage Corridor Visitor Center, McKeon Rd, Worcester', lat:42.2362151, lng:-71.7933420 },
+      { name:'1265 Millbury St lot, Worcester',                                  lat:42.2192016, lng:-71.7831917 },
+      { name:'River Bend Farm Visitor Center, 287 Oak St, Uxbridge',             lat:42.0938856, lng:-71.6238340 },
+    ] },
+  { id:'n14', name:'Mason-Greenville Rail Trail',            state:'NH',    miles:9.1,  distMi:28, surface:'Gravel',        lat:42.748, lng:-71.755, url:'https://www.traillink.com/trail/mason-railroad-trail/',                           desc:'Mason to Greenville NH through quiet rural southern NH',
+    parking:[
+      { name:'Pratt Pond Rd lot, Greenville', lat:42.7784938, lng:-71.7697014 },
+      { name:'Depot Rd lot, Mason', lat:42.7353857, lng:-71.7555673 },
+    ] },
   // ── 30–45 mi ────────────────────────────────────────────────────────────────
-  { id:'n15', name:'Southern New England Trunkline Trail',   state:'MA',    miles:22,   distMi:32, surface:'Crushed stone', lat:42.060, lng:-71.652, url:'https://en.wikipedia.org/wiki/Southern_New_England_Trunkline_Trail',              desc:'Wrentham to Douglas through Franklin & Bellingham' },
-  { id:'n16', name:'World War II Veterans Memorial Trail',   state:'MA',    miles:6,    distMi:33, surface:'Paved',         lat:42.012, lng:-71.194, url:'https://www.traillink.com/trail/world-war-ii-veterans-memorial-trail/',            desc:'Mansfield to Norton along a former railroad right-of-way' },
-  { id:'n96', name:'Whitney Spur Rail Trail',                state:'MA',    miles:1.6,  distMi:31, surface:'Paved/Crushed stone', lat:42.242, lng:-70.836, url:'https://www.traillink.com/trail/whitney-spur-rail-trail/',                    desc:'Former Old Colony Railroad spur connecting Cohasset MBTA Station to the Great Swamp and woodlands at the edge of Wompatuck State Park' },
-  { id:'n65', name:'Clipper City Rail Trail',                state:'MA',    miles:3.5,  distMi:34, surface:'Paved',          lat:42.810, lng:-70.880, url:'https://www.traillink.com/trail/clipper-city-rail-trail/',                        desc:'Loop trail connecting Newburyport\'s MBTA station to its Merrimack River waterfront, lined with public art and a harbor boardwalk' },
-  { id:'n66', name:'Hanover Branch Rail Trail',              state:'MA',    miles:3.4,  distMi:34, surface:'Paved/Gravel',   lat:42.120, lng:-70.880, url:'https://www.traillink.com/trail/hanover-branch-rail-trail/',                     desc:'Forested rail-trail south of Boston on the 1860s Hanover Branch Line, connecting Abington and Rockland along French Stream' },
-  { id:'n17', name:'Rockingham Rail Trail (Fremont Branch)', state:'NH',    miles:18,   distMi:35, surface:'Gravel',        lat:42.930, lng:-71.175, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/rockingham-recreational-rail-trail,-fremont-branch', desc:'Windham to Epping NH along a southern NH rail corridor' },
-  { id:'n18', name:'Blackstone River Bikeway',               state:'RI',    miles:11.6, distMi:36, surface:'Paved',         lat:41.948, lng:-71.492, url:'https://www.traillink.com/trail/blackstone-river-bikeway/',                      desc:'Cumberland to Woonsocket along the historic Blackstone Canal' },
-  { id:'n19', name:'Rockingham Recreational Trail',          state:'NH',    miles:26,   distMi:37, surface:'Gravel',        lat:43.002, lng:-71.253, url:'https://www.traillink.com/trail/rockingham-recreational-trail/',                  desc:'Manchester to Fremont through Derry & Sandown, NH' },
-  { id:'n20', name:'Goffstown Rail Trail',                   state:'NH',    miles:5.5,  distMi:39, surface:'Gravel',        lat:42.993, lng:-71.617, url:'http://www.goffstownrailtrail.org/',                                             desc:'Goffstown to Manchester through scenic rural NH' },
-  { id:'n68', name:'New Boston Rail Trail',                  state:'NH',    miles:3.9,  distMi:42, surface:'Gravel',         lat:43.050, lng:-71.620, url:'https://www.traillink.com/trail/new-boston-rail-trail/',                       desc:'Wooded NH rail-trail on a corridor operational 1893–1931, following the South Branch Piscataquog River through New Boston' },
-  { id:'n67', name:'Quinebaug Valley Rail Trail',            state:'MA',    miles:5.7,  distMi:42, surface:'Gravel',         lat:42.050, lng:-71.880, url:'https://www.traillink.com/trail/quinebaug-valley-rail-trail/',                   desc:'Rural Worcester County trail on the former Southbridge & Blackstone line through wooded terrain alongside the Quinebaug River' },
-  { id:'n21', name:'Monadnock Rail Trail',                   state:'NH',    miles:7.5,  distMi:43, surface:'Gravel',        lat:42.817, lng:-72.042, url:'https://www.traillink.com/trail/monadnock-recreational-rail-trail/',              desc:'Jaffrey to Rindge NH in the shadow of Mt. Monadnock' },
-  { id:'n22', name:'Peterborough Rail Trail',                state:'NH',    miles:6,    distMi:43, surface:'Gravel',        lat:42.867, lng:-71.950, url:'https://www.traillink.com/trail/peterborough-and-hillsborough-railroad-trail/',   desc:'Peterborough to Hancock through the scenic Monadnock Region' },
+  { id:'n15', name:'Southern New England Trunkline Trail',   state:'MA',    miles:22,   distMi:32, surface:'Crushed stone', lat:42.060, lng:-71.652, url:'https://en.wikipedia.org/wiki/Southern_New_England_Trunkline_Trail',              desc:'Wrentham to Douglas through Franklin & Bellingham',
+    parking:[
+      { name:'Grove St lot, Franklin',   lat:42.0741516, lng:-71.4235310 },
+      { name:'Center St lot, Bellingham', lat:42.0490289, lng:-71.4742676 },
+      { name:'South St (Rt 96) lot, Douglas', lat:42.0114891, lng:-71.7140931 },
+    ] },
+  { id:'n16', name:'World War II Veterans Memorial Trail',   state:'MA',    miles:6,    distMi:33, surface:'Paved',         lat:42.012, lng:-71.194, url:'https://www.traillink.com/trail/world-war-ii-veterans-memorial-trail/',            desc:'Mansfield to Norton along a former railroad right-of-way',
+    parking:[
+      { name:'Fruit St lot, Mansfield', lat:42.0058622, lng:-71.2004173 },
+      { name:'Crane St lot, Norton', lat:41.9451829, lng:-71.1618304 },
+    ] },
+  { id:'n96', name:'Whitney Spur Rail Trail',                state:'MA',    miles:1.6,  distMi:31, surface:'Paved/Crushed stone', lat:42.242, lng:-70.836, url:'https://www.traillink.com/trail/whitney-spur-rail-trail/',                    desc:'Former Old Colony Railroad spur connecting Cohasset MBTA Station to the Great Swamp and woodlands at the edge of Wompatuck State Park',
+    parking:[
+      { name:'Cohasset MBTA Station, 110 Chief Justice Cushing Hwy, Cohasset', lat:42.2431301, lng:-70.8562976 },
+    ] },
+  { id:'n65', name:'Clipper City Rail Trail',                state:'MA',    miles:3.5,  distMi:34, surface:'Paved',          lat:42.810, lng:-70.880, url:'https://www.traillink.com/trail/clipper-city-rail-trail/',                        desc:'Loop trail connecting Newburyport\'s MBTA station to its Merrimack River waterfront, lined with public art and a harbor boardwalk',
+    parking:[
+      { name:'Cushing Park, Newburyport', lat:42.8129842, lng:-70.8807427 },
+      { name:'Cashman Park, Newburyport', lat:42.8165776, lng:-70.8783718 },
+    ] },
+  { id:'n66', name:'Hanover Branch Rail Trail',              state:'MA',    miles:3.4,  distMi:34, surface:'Paved/Gravel',   lat:42.120, lng:-70.880, url:'https://www.traillink.com/trail/hanover-branch-rail-trail/',                     desc:'Forested rail-trail south of Boston on the 1860s Hanover Branch Line, connecting Abington and Rockland along French Stream',
+    parking:[
+      { name:'Hanover St (Rt 139) lot, West Hanover', lat:42.1197124, lng:-70.8868626 },
+      { name:'Monroe St lot, Abington', lat:42.1245297, lng:-70.9390390 },
+    ] },
+  { id:'n17', name:'Rockingham Rail Trail (Fremont Branch)', state:'NH',    miles:18,   distMi:35, surface:'Gravel',        lat:42.930, lng:-71.175, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/rockingham-recreational-rail-trail,-fremont-branch', desc:'Windham to Epping NH along a southern NH rail corridor',
+    parking:[
+      { name:'Ballpark lot off Rt 107, Fremont', lat:42.9909194, lng:-71.1425606 },
+      { name:'Trailhead near Rt 27, Epping', lat:43.0471211, lng:-71.0758436 },
+    ] },
+  { id:'n18', name:'Blackstone River Bikeway',               state:'RI',    miles:11.6, distMi:36, surface:'Paved',         lat:41.948, lng:-71.492, url:'https://www.traillink.com/trail/blackstone-river-bikeway/',                      desc:'Cumberland to Woonsocket along the historic Blackstone Canal',
+    parking:[
+      { name:'160 Front St (Lonsdale) lot, Lincoln', lat:41.9054328, lng:-71.4071047 },
+      { name:'Rivers Edge Recreation Complex, Woonsocket', lat:42.0028761, lng:-71.5147839 },
+    ] },
+  { id:'n19', name:'Rockingham Recreational Trail',          state:'NH',    miles:26,   distMi:37, surface:'Gravel',        lat:43.002, lng:-71.253, url:'https://www.traillink.com/trail/rockingham-recreational-trail/',                  desc:'Manchester to Fremont through Derry & Sandown, NH',
+    parking:[
+      { name:'Warner Hill Rd lot, Derry', lat:42.8833334, lng:-71.2610748 },
+      { name:'Sandown Depot Museum lot, Sandown', lat:42.9290632, lng:-71.1862120 },
+    ] },
+  { id:'n20', name:'Goffstown Rail Trail',                   state:'NH',    miles:5.5,  distMi:39, surface:'Gravel',        lat:42.993, lng:-71.617, url:'http://www.goffstownrailtrail.org/',                                             desc:'Goffstown to Manchester through scenic rural NH',
+    parking:[
+      { name:'Goffstown Parks & Rec, 155 South Mast St, Goffstown', lat:43.0155190, lng:-71.5805363 },
+    ] },
+  { id:'n68', name:'New Boston Rail Trail',                  state:'NH',    miles:3.9,  distMi:42, surface:'Gravel',         lat:43.050, lng:-71.620, url:'https://www.traillink.com/trail/new-boston-rail-trail/',                       desc:'Wooded NH rail-trail on a corridor operational 1893–1931, following the South Branch Piscataquog River through New Boston',
+    parking:[
+      { name:'Hilldale Lane lot (4-H Fairgrounds), New Boston', lat:42.9828742, lng:-71.6817252 },
+      { name:'Lang Station, Gregg Mill Rd, New Boston', lat:43.0011848, lng:-71.6621356 },
+    ] },
+  { id:'n67', name:'Quinebaug Valley Rail Trail',            state:'MA',    miles:5.7,  distMi:42, surface:'Gravel',         lat:42.050, lng:-71.880, url:'https://www.traillink.com/trail/quinebaug-valley-rail-trail/',                   desc:'Rural Worcester County trail on the former Southbridge & Blackstone line through wooded terrain alongside the Quinebaug River',
+    parking:[
+      { name:'Rt 131 trailhead, Southbridge', lat:42.0750465, lng:-72.0337376 },
+    ] },
+  { id:'n21', name:'Monadnock Rail Trail',                   state:'NH',    miles:7.5,  distMi:43, surface:'Gravel',        lat:42.817, lng:-72.042, url:'https://www.traillink.com/trail/monadnock-recreational-rail-trail/',              desc:'Jaffrey to Rindge NH in the shadow of Mt. Monadnock',
+    parking:[
+      { name:'Legion Field lot, Webster St, Jaffrey', lat:42.8152610, lng:-72.0161153 },
+      { name:'Contoocook Lake boat launch, Rindge', lat:42.7885865, lng:-72.0113190 },
+    ] },
+  { id:'n22', name:'Peterborough Rail Trail',                state:'NH',    miles:6,    distMi:43, surface:'Gravel',        lat:42.867, lng:-71.950, url:'https://www.traillink.com/trail/peterborough-and-hillsborough-railroad-trail/',   desc:'Peterborough to Hancock through the scenic Monadnock Region',
+    parking:[
+      { name:'Scott Mitchell Rd lot, Peterborough', lat:42.9302070, lng:-71.9429302 },
+    ] },
   // ── 45–55 mi ────────────────────────────────────────────────────────────────
-  { id:'n23', name:'Rockingham Rail Trail (Portsmouth Branch)', state:'NH', miles:25.3, distMi:45, surface:'Gravel',        lat:43.050, lng:-71.098, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/rockingham-recreational-rail-trail,-portsmouth-bra', desc:'Manchester to Newfields NH heading toward the seacoast' },
-  { id:'n24', name:'Cheshire Rail Trail South',               state:'NH',   miles:18.5, distMi:46, surface:'Gravel',        lat:42.870, lng:-72.076, url:'https://www.traillink.com/trail/cheshire-rail-trail-(cheshire-branch-rail-trail)/', desc:'Fitzwilliam to Keene NH through the rolling Cheshire Hills' },
-  { id:'n25', name:'Grand Trunk Trail',                       state:'MA',   miles:7,    distMi:46, surface:'Gravel',        lat:42.096, lng:-72.076, url:'https://www.trekksturbridge.org/grand-trunk-trail',                              desc:'Sturbridge MA rail corridor (a.k.a. Titanic Rail Trail)' },
-  { id:'n26', name:'Air Line State Park Trail',               state:'CT',   miles:22,   distMi:48, surface:'Gravel',        lat:41.900, lng:-71.870, url:'https://www.traillink.com/trail/air-line-state-park-trail-(north-section)/',     desc:'Eastern CT rail corridor connecting to the SNETT at the MA border' },
-  { id:'n27', name:'Washington Secondary Rail Trail',         state:'RI',   miles:19,   distMi:50, surface:'Gravel',        lat:41.755, lng:-71.553, url:'https://www.traillink.com/trail/washington-secondary-bike-path/',               desc:'Cranston to Coventry through rural western Rhode Island' },
-  { id:'n28', name:'East Bay Bike Path',                      state:'RI',   miles:14.5, distMi:53, surface:'Paved',         lat:41.698, lng:-71.275, url:'https://www.traillink.com/trail/east-bay-bike-path/',                           desc:'Providence to Bristol with waterfront views of Narragansett Bay' },
-  { id:'n29', name:'Concord–Lake Sunapee Rail Trail',         state:'NH',   miles:35,   distMi:53, surface:'Crushed stone', lat:43.150, lng:-71.860, url:'https://en.wikipedia.org/wiki/Concord-Lake_Sunapee_Rail_Trail',                  desc:'Concord NH to Newbury through Warner, Sutton & Bradford' },
-  { id:'n30', name:'NH Seacoast Greenway',                    state:'NH',   miles:8,    distMi:53, surface:'Paved/Gravel',  lat:43.017, lng:-70.870, url:'https://nhseacoastgreenway.org/',                                               desc:'Hampton to Portsmouth along the NH seacoast rail corridor' },
-  { id:'n69', name:'Henniker & Hopkinton Rail Trails',       state:'NH',    miles:6.7,  distMi:54, surface:'Gravel',         lat:43.180, lng:-71.820, url:'https://www.traillink.com/trail/henniker--hopkinton-rail-trails/',              desc:'Two connected former rail corridors along the Contoocook River in central NH, offering wooded scenery and riverside views through Henniker and Hopkinton' },
-  { id:'n31', name:'Hillsborough Rail Trail',                 state:'NH',   miles:8,    distMi:54, surface:'Gravel',        lat:43.113, lng:-71.906, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/hillsborough-recreational-rail-trail', desc:'Hillsborough NH — rolling countryside in central NH' },
+  { id:'n23', name:'Rockingham Rail Trail (Portsmouth Branch)', state:'NH', miles:25.3, distMi:45, surface:'Gravel',        lat:43.050, lng:-71.098, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/rockingham-recreational-rail-trail,-portsmouth-bra', desc:'Manchester to Newfields NH heading toward the seacoast',
+    parking:[
+      { name:'Page St lot, Manchester', lat:42.9881903, lng:-71.4205321 },
+      { name:'Old depot, Newfields', lat:43.0355742, lng:-70.9422214 },
+    ] },
+  { id:'n24', name:'Cheshire Rail Trail South',               state:'NH',   miles:18.5, distMi:46, surface:'Gravel',        lat:42.870, lng:-72.076, url:'https://www.traillink.com/trail/cheshire-rail-trail-(cheshire-branch-rail-trail)/', desc:'Fitzwilliam to Keene NH through the rolling Cheshire Hills',
+    parking:[
+      { name:'Marlboro St lot, Keene', lat:42.9239305, lng:-72.2653570 },
+      { name:'State Line Circle lot, Fitzwilliam', lat:42.7197464, lng:-72.0834122 },
+    ] },
+  { id:'n25', name:'Grand Trunk Trail',                       state:'MA',   miles:7,    distMi:46, surface:'Gravel',        lat:42.096, lng:-72.076, url:'https://www.trekksturbridge.org/grand-trunk-trail',                              desc:'Sturbridge MA rail corridor (a.k.a. Titanic Rail Trail)',
+    parking:[
+      { name:'Marjorie Lane (Westville Dam) lot, Southbridge', lat:42.0812044, lng:-72.0538948 },
+    ] },
+  { id:'n26', name:'Air Line State Park Trail',               state:'CT',   miles:22,   distMi:48, surface:'Gravel',        lat:41.900, lng:-71.870, url:'https://www.traillink.com/trail/air-line-state-park-trail-(north-section)/',     desc:'Eastern CT rail corridor connecting to the SNETT at the MA border',
+    parking:[
+      { name:'82 Middle Haddam Rd lot, East Hampton', lat:41.5526592, lng:-72.5497603 },
+      { name:'Windham commuter lot', lat:41.6993535, lng:-72.1578243 },
+    ] },
+  { id:'n27', name:'Washington Secondary Rail Trail',         state:'RI',   miles:19,   distMi:50, surface:'Gravel',        lat:41.755, lng:-71.553, url:'https://www.traillink.com/trail/washington-secondary-bike-path/',               desc:'Cranston to Coventry through rural western Rhode Island',
+    parking:[
+      { name:'Garfield Ave lot, Cranston', lat:41.7959741, lng:-71.4428707 },
+      { name:'Railroad St lot, Coventry', lat:41.6898298, lng:-71.7491245 },
+    ] },
+  { id:'n28', name:'East Bay Bike Path',                      state:'RI',   miles:14.5, distMi:53, surface:'Paved',         lat:41.698, lng:-71.275, url:'https://www.traillink.com/trail/east-bay-bike-path/',                           desc:'Providence to Bristol with waterfront views of Narragansett Bay',
+    parking:[
+      { name:'India Point Park, Providence', lat:41.8174647, lng:-71.3898172 },
+      { name:'Independence Park, Bristol', lat:41.6739217, lng:-71.2793991 },
+    ] },
+  { id:'n29', name:'Concord–Lake Sunapee Rail Trail',         state:'NH',   miles:35,   distMi:53, surface:'Crushed stone', lat:43.150, lng:-71.860, url:'https://en.wikipedia.org/wiki/Concord-Lake_Sunapee_Rail_Trail',                  desc:'Concord NH to Newbury through Warner, Sutton & Bradford',
+    parking:[
+      { name:'25 Fisherville Rd lot, Concord', lat:43.2527743, lng:-71.5752388 },
+      { name:'Depot St lot, Warner', lat:43.2795842, lng:-71.8172045 },
+    ] },
+  { id:'n30', name:'NH Seacoast Greenway',                    state:'NH',   miles:8,    distMi:53, surface:'Paved/Gravel',  lat:43.017, lng:-70.870, url:'https://nhseacoastgreenway.org/',                                               desc:'Hampton to Portsmouth along the NH seacoast rail corridor',
+    parking:[
+      { name:'305 Greenland Rd (skate park), Portsmouth', lat:43.0569871, lng:-70.7887783 },
+      { name:'Rt 1 trailhead, North Hampton', lat:42.9965868, lng:-70.8177401 },
+    ] },
+  { id:'n69', name:'Henniker & Hopkinton Rail Trails',       state:'NH',    miles:6.7,  distMi:54, surface:'Gravel',         lat:43.180, lng:-71.820, url:'https://www.traillink.com/trail/henniker--hopkinton-rail-trails/',              desc:'Two connected former rail corridors along the Contoocook River in central NH, offering wooded scenery and riverside views through Henniker and Hopkinton',
+    parking:[
+      { name:'Depot Hill Rd lot, Henniker', lat:43.1697541, lng:-71.8198558 },
+      { name:'Hopkinton Dam, West Hopkinton', lat:43.1885532, lng:-71.7474782 },
+    ] },
+  { id:'n31', name:'Hillsborough Rail Trail',                 state:'NH',   miles:8,    distMi:54, surface:'Gravel',        lat:43.113, lng:-71.906, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/hillsborough-recreational-rail-trail', desc:'Hillsborough NH — rolling countryside in central NH',
+    parking:[
+      { name:'Fish and Game Rd lot, Deering/Hillsborough', lat:43.0929705, lng:-71.9117006 },
+    ] },
   // ── 55–70 mi ────────────────────────────────────────────────────────────────
-  { id:'n32', name:'Eastern Trail',                           state:'ME',   miles:65,   distMi:58, surface:'Paved/Gravel',  lat:43.290, lng:-70.720, url:'https://www.traillink.com/trail/eastern-trail/',                                 desc:'Kittery to South Portland ME — southern sections most accessible from Concord' },
-  { id:'n33', name:'Ashuelot Rail Trail',                     state:'NH',   miles:21,   distMi:60, surface:'Gravel/Paved',  lat:42.930, lng:-72.254, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/ashuelot-recreational-rail-trail', desc:'Keene to Winchester NH through the Ashuelot River valley' },
-  { id:'n34', name:'Cheshire Rail Trail North',               state:'NH',   miles:17.8, distMi:60, surface:'Gravel/Paved',  lat:43.012, lng:-72.295, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/cheshire-recreational-rail-trail', desc:'Keene to Walpole NH along the Connecticut River valley' },
-  { id:'n70', name:'Canalside Rail Trail',                   state:'MA',    miles:3.6,  distMi:61, surface:'Paved',          lat:42.600, lng:-72.530, url:'https://www.traillink.com/trail/canalside-rail-trail/',                        desc:'Scenic rail-trail through Turners Falls featuring trestle bridges, canal views, and a historic 1880 bridge over the Connecticut River' },
-  { id:'n35', name:'Northern Rail Trail',                     state:'NH',   miles:59,   distMi:61, surface:'Paved/Gravel',  lat:43.350, lng:-71.900, url:'https://en.wikipedia.org/wiki/Northern_Rail_Trail',                             desc:'Boscawen to Lebanon — one of New Hampshire\'s longest rail trails' },
-  { id:'n36', name:'Fort Hill Recreational Rail Trail',       state:'NH',   miles:8,    distMi:64, surface:'Gravel',        lat:42.781, lng:-72.482, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/fort-hill-recreational-rail-trail', desc:'Hinsdale NH — rail corridor along the Connecticut River valley' },
-  { id:'n37', name:'Farmington Rail Trail',                   state:'NH',   miles:6,    distMi:66, surface:'Gravel',        lat:43.388, lng:-71.065, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/farmington-recreational-rail-trail', desc:'Farmington NH — peaceful rail corridor in central NH' },
+  { id:'n32', name:'Eastern Trail',                           state:'ME',   miles:65,   distMi:58, surface:'Paved/Gravel',  lat:43.290, lng:-70.720, url:'https://www.traillink.com/trail/eastern-trail/',                                 desc:'Kittery to South Portland ME — southern sections most accessible from Concord',
+    parking:[
+      { name:'Kennebunk Elementary School lot, Kennebunk', lat:43.4172872, lng:-70.5597253 },
+      { name:'Southern Maine Medical Center lot, Biddeford', lat:43.4775267, lng:-70.4903596 },
+    ] },
+  { id:'n33', name:'Ashuelot Rail Trail',                     state:'NH',   miles:21,   distMi:60, surface:'Gravel/Paved',  lat:42.930, lng:-72.254, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/ashuelot-recreational-rail-trail', desc:'Keene to Winchester NH through the Ashuelot River valley',
+    parking:[
+      { name:'Emerald St lot, Keene', lat:42.9308066, lng:-72.2801145 },
+      { name:'Northfield Rd lot, Hinsdale', lat:42.7299025, lng:-72.4526741 },
+    ] },
+  { id:'n34', name:'Cheshire Rail Trail North',               state:'NH',   miles:17.8, distMi:60, surface:'Gravel/Paved',  lat:43.012, lng:-72.295, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/cheshire-recreational-rail-trail', desc:'Keene to Walpole NH along the Connecticut River valley',
+    parking:[
+      { name:'Main St lot, Walpole', lat:43.0885430, lng:-72.4283700 },
+      { name:'Marlboro St lot, Keene', lat:42.9239305, lng:-72.2653570 },
+    ] },
+  { id:'n70', name:'Canalside Rail Trail',                   state:'MA',    miles:3.6,  distMi:61, surface:'Paved',          lat:42.600, lng:-72.530, url:'https://www.traillink.com/trail/canalside-rail-trail/',                        desc:'Scenic rail-trail through Turners Falls featuring trestle bridges, canal views, and a historic 1880 bridge over the Connecticut River',
+    parking:[
+      { name:'Unity Park, Turners Falls', lat:42.6064860, lng:-72.5518899 },
+      { name:'McClelland Farm Rd lot, Deerfield', lat:42.5722922, lng:-72.5762365 },
+    ] },
+  { id:'n35', name:'Northern Rail Trail',                     state:'NH',   miles:59,   distMi:61, surface:'Paved/Gravel',  lat:43.350, lng:-71.900, url:'https://en.wikipedia.org/wiki/Northern_Rail_Trail',                             desc:'Boscawen to Lebanon — one of New Hampshire\'s longest rail trails',
+    parking:[
+      { name:'Spencer St lot, Lebanon', lat:43.6454248, lng:-72.2480406 },
+      { name:'Grafton Town Offices lot, Grafton', lat:43.5619933, lng:-71.9495698 },
+      { name:'Potter Place Depot, 105 Depot St, Andover', lat:43.4365742, lng:-71.8554635 },
+    ] },
+  { id:'n36', name:'Fort Hill Recreational Rail Trail',       state:'NH',   miles:8,    distMi:64, surface:'Gravel',        lat:42.781, lng:-72.482, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/fort-hill-recreational-rail-trail', desc:'Hinsdale NH — rail corridor along the Connecticut River valley',
+    parking:[
+      { name:'Rt 63 trailhead lot, Hinsdale', lat:42.758734, lng:-72.471312 },
+    ] },
+  { id:'n37', name:'Farmington Rail Trail',                   state:'NH',   miles:6,    distMi:66, surface:'Gravel',        lat:43.388, lng:-71.065, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/farmington-recreational-rail-trail', desc:'Farmington NH — peaceful rail corridor in central NH',
+    parking:[
+      { name:'NH-11 lot, Farmington', lat:43.3514775, lng:-71.0263150 },
+      { name:'Chestnut Hill Rd lot, Rochester', lat:43.3435570, lng:-70.9960679 },
+    ] },
   // ── 68–80 mi ────────────────────────────────────────────────────────────────
-  { id:'n38', name:'Winnipesaukee River Trail',               state:'NH',   miles:5,    distMi:69, surface:'Paved',         lat:43.443, lng:-71.649, url:'https://www.traillink.com/trail/winnipesaukee-river-trail/',                     desc:'Franklin to Tilton NH along the Winnipesaukee River' },
-  { id:'n71', name:'William C. O\'Neill Bike Path',           state:'RI',    miles:7.2,  distMi:70, surface:'Paved',          lat:41.450, lng:-71.520, url:'https://www.traillink.com/trail/william-c-oneill-bike-path/',                  desc:'Paved rail-trail on the 1876 Narragansett Pier Railroad from Kingston Station through the Great Swamp to Narragansett Bay' },
-  { id:'n39', name:'Manhan Rail Trail',                       state:'MA',   miles:6,    distMi:71, surface:'Paved',         lat:42.267, lng:-72.673, url:'https://en.wikipedia.org/wiki/Manhan_Rail_Trail',                               desc:'Easthampton — short paved gem in the Pioneer Valley' },
-  { id:'n72', name:'Sanford-Springvale Rail Trail',           state:'ME',    miles:5.9,  distMi:73, surface:'Gravel',         lat:43.460, lng:-70.780, url:'https://www.traillink.com/trail/sanford-springvale-rail-trail/',                desc:'Gravel rail-trail through wooded southern Maine between Sanford and Springvale, open to bikers, walkers, horses, and snowmobiles' },
-  { id:'n40', name:'Shining Sea Bikeway',                     state:'MA',   miles:10.7, distMi:73, surface:'Paved',         lat:41.560, lng:-70.638, url:'https://www.traillink.com/trail/shining-sea-bikeway/',                           desc:'Woods Hole to North Falmouth — Massachusetts\' oldest rail trail' },
-  { id:'n41', name:'Sugar River Rail Trail',                  state:'NH',   miles:9.5,  distMi:77, surface:'Gravel',        lat:43.371, lng:-72.174, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/sugar-river-recreational-rail-trail', desc:'Newport to Claremont NH through the Sugar River valley' },
-  { id:'n42', name:'Hop River State Park Trail',              state:'CT',   miles:20.8, distMi:78, surface:'Gravel',        lat:41.800, lng:-72.390, url:'https://www.traillink.com/trail/hop-river-state-park-trail/',                   desc:'Manchester to Windham CT — parallels the Hop River through eastern CT' },
-  { id:'n43', name:'Cotton Valley Rail Trail',                state:'NH',   miles:12,   distMi:78, surface:'Gravel',        lat:43.578, lng:-71.209, url:'https://cottonvalleyrailtrail.org/',                                            desc:'Wolfeboro to Wakefield NH in the Lakes Region' },
-  { id:'n73', name:'Farmington River Trail',                 state:'CT',    miles:16.5, distMi:78, surface:'Paved',          lat:41.850, lng:-72.650, url:'https://www.traillink.com/trail/farmington-river-trail/',                      desc:'Former Central New England Railway corridor following the Farmington River through Simsbury, Canton, and Farmington with a scenic Wild & Scenic River' },
-  { id:'n44', name:'Columbia Greenway Rail Trail',            state:'MA',   miles:6.5,  distMi:78, surface:'Paved',         lat:42.119, lng:-72.749, url:'https://www.traillink.com/trail/columbia-greenway-rail-trail/',                 desc:'Westfield MA — Pioneer Valley rail corridor near Springfield' },
+  { id:'n38', name:'Winnipesaukee River Trail',               state:'NH',   miles:5,    distMi:69, surface:'Paved',         lat:43.443, lng:-71.649, url:'https://www.traillink.com/trail/winnipesaukee-river-trail/',                     desc:'Franklin to Tilton NH along the Winnipesaukee River',
+    parking:[
+      { name:'Trestle View Park, Central St, Franklin', lat:43.4456527, lng:-71.6431843 },
+      { name:'142 East Main St / Morrison Ave, Tilton', lat:43.446339, lng:-71.579741 },
+    ] },
+  { id:'n71', name:'William C. O\'Neill Bike Path',           state:'RI',    miles:7.2,  distMi:70, surface:'Paved',          lat:41.450, lng:-71.520, url:'https://www.traillink.com/trail/william-c-oneill-bike-path/',                  desc:'Paved rail-trail on the 1876 Narragansett Pier Railroad from Kingston Station through the Great Swamp to Narragansett Bay',
+    parking:[
+      { name:'Kingston Station lot, 1 Railroad Ave, West Kingston', lat:41.4839750, lng:-71.5596960 },
+    ] },
+  { id:'n39', name:'Manhan Rail Trail',                       state:'MA',   miles:6,    distMi:71, surface:'Paved',         lat:42.267, lng:-72.673, url:'https://en.wikipedia.org/wiki/Manhan_Rail_Trail',                               desc:'Easthampton — short paved gem in the Pioneer Valley',
+    parking:[
+      { name:'32 Payson Ave lot, Easthampton', lat:42.2655621, lng:-72.6707224 },
+    ] },
+  { id:'n72', name:'Sanford-Springvale Rail Trail',           state:'ME',    miles:5.9,  distMi:73, surface:'Gravel',         lat:43.460, lng:-70.780, url:'https://www.traillink.com/trail/sanford-springvale-rail-trail/',                desc:'Gravel rail-trail through wooded southern Maine between Sanford and Springvale, open to bikers, walkers, horses, and snowmobiles',
+    parking:[
+      { name:'Hanson Ridge Rd lot, Springvale', lat:43.4552744, lng:-70.8141831 },
+    ] },
+  { id:'n40', name:'Shining Sea Bikeway',                     state:'MA',   miles:10.7, distMi:73, surface:'Paved',         lat:41.560, lng:-70.638, url:'https://www.traillink.com/trail/shining-sea-bikeway/',                           desc:'Woods Hole to North Falmouth — Massachusetts\' oldest rail trail',
+    parking:[
+      { name:'County Rd lot, North Falmouth', lat:41.6489409, lng:-70.6168547 },
+      { name:'Depot Ave lot, Falmouth', lat:41.5559095, lng:-70.6226492 },
+    ] },
+  { id:'n41', name:'Sugar River Rail Trail',                  state:'NH',   miles:9.5,  distMi:77, surface:'Gravel',        lat:43.371, lng:-72.174, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/sugar-river-recreational-rail-trail', desc:'Newport to Claremont NH through the Sugar River valley',
+    parking:[
+      { name:'Belknap Ave lot, Newport', lat:43.3663842, lng:-72.1777555 },
+      { name:'Washington St trailhead, Claremont', lat:43.365535, lng:-72.302509 },
+    ] },
+  { id:'n42', name:'Hop River State Park Trail',              state:'CT',   miles:20.8, distMi:78, surface:'Gravel',        lat:41.800, lng:-72.390, url:'https://www.traillink.com/trail/hop-river-state-park-trail/',                   desc:'Manchester to Windham CT — parallels the Hop River through eastern CT',
+    parking:[
+      { name:'166 Colonial Rd lot, Manchester', lat:41.8016709, lng:-72.5066673 },
+    ] },
+  { id:'n43', name:'Cotton Valley Rail Trail',                state:'NH',   miles:12,   distMi:78, surface:'Gravel',        lat:43.578, lng:-71.209, url:'https://cottonvalleyrailtrail.org/',                                            desc:'Wolfeboro to Wakefield NH in the Lakes Region',
+    parking:[
+      { name:'Depot St trailhead, Wolfeboro', lat:43.5853998, lng:-71.2124180 },
+    ] },
+  { id:'n73', name:'Farmington River Trail',                 state:'CT',    miles:16.5, distMi:78, surface:'Paved',          lat:41.850, lng:-72.650, url:'https://www.traillink.com/trail/farmington-river-trail/',                      desc:'Former Central New England Railway corridor following the Farmington River through Simsbury, Canton, and Farmington with a scenic Wild & Scenic River',
+    parking:[
+      { name:'1113 Hopmeadow St lot, Simsbury', lat:41.8983193, lng:-72.7869636 },
+      { name:'1008 New Britain Ave lot, Farmington', lat:41.7305425, lng:-72.8628637 },
+    ] },
+  { id:'n44', name:'Columbia Greenway Rail Trail',            state:'MA',   miles:6.5,  distMi:78, surface:'Paved',         lat:42.119, lng:-72.749, url:'https://www.traillink.com/trail/columbia-greenway-rail-trail/',                 desc:'Westfield MA — Pioneer Valley rail corridor near Springfield',
+    parking:[
+      { name:'866 Shaker Rd lot, Westfield', lat:42.0887292, lng:-72.7419932 },
+    ] },
   // ── 80–100 mi ───────────────────────────────────────────────────────────────
-  { id:'n45', name:'Cape Cod Rail Trail',                     state:'MA',   miles:25.5, distMi:83, surface:'Paved',         lat:41.783, lng:-70.049, url:'https://www.traillink.com/trail/cape-cod-rail-trail/',                          desc:'Dennis to Wellfleet through Brewster & Orleans' },
-  { id:'n46', name:'Old Colony Rail Trail',                   state:'MA',   miles:9.4,  distMi:84, surface:'Paved',         lat:41.828, lng:-70.077, url:'https://www.traillink.com/trail/old-colony-rail-trail/',                        desc:'Harwich to Chatham on Cape Cod' },
-  { id:'n74', name:'Toonerville Rail-Trail',                 state:'VT',    miles:3.2,  distMi:85, surface:'Paved',          lat:43.350, lng:-72.480, url:'https://www.traillink.com/trail/toonerville-rail-trail/',                      desc:'Paved trail on the former Springfield Electric Railway (1896) shadowing the Black River through Springfield VT to the Connecticut River corridor' },
-  { id:'n47', name:'Southwick Rail Trail',                    state:'MA',   miles:8,    distMi:87, surface:'Paved',         lat:42.062, lng:-72.769, url:'https://www.traillink.com/trail/southwick-rail-trail/',                         desc:'Southwick MA — connects to the Farmington Canal Heritage Trail in CT' },
-  { id:'n48', name:'Farmington Canal Heritage Trail',         state:'CT',   miles:20,   distMi:89, surface:'Paved',         lat:41.870, lng:-72.810, url:'https://www.traillink.com/trail/farmington-canal-heritage-trail/',              desc:'Northern CT section of the historic 84-mile canal corridor to New Haven' },
-  { id:'n49', name:'Norwottuck Rail Trail',                   state:'MA',   miles:10,   distMi:90, surface:'Paved',         lat:42.304, lng:-72.455, url:'https://www.traillink.com/trail/norwottuck-rail-trail/',                        desc:'Northampton to Belchertown through Amherst & Hadley — iconic Pioneer Valley ride' },
-  { id:'n50', name:'Ashuwillticook Rail Trail',               state:'MA',   miles:12,   distMi:94,  surface:'Paved',               lat:42.637, lng:-73.121, url:'https://www.traillink.com/trail/ashuwillticook-rail-trail/',                        desc:'Lanesborough to Adams through the Berkshires alongside Cheshire Reservoir' },
+  { id:'n45', name:'Cape Cod Rail Trail',                     state:'MA',   miles:25.5, distMi:83, surface:'Paved',         lat:41.783, lng:-70.049, url:'https://www.traillink.com/trail/cape-cod-rail-trail/',                          desc:'Dennis to Wellfleet through Brewster & Orleans',
+    parking:[
+      { name:'Rt 134 trailhead, South Dennis', lat:41.6844590, lng:-70.1506576 },
+      { name:'LeCount Hollow Rd trailhead, South Wellfleet', lat:41.9176846, lng:-69.9825945 },
+    ] },
+  { id:'n46', name:'Old Colony Rail Trail',                   state:'MA',   miles:9.4,  distMi:84, surface:'Paved',         lat:41.828, lng:-70.077, url:'https://www.traillink.com/trail/old-colony-rail-trail/',                        desc:'Harwich to Chatham on Cape Cod',
+    parking:[
+      { name:'Depot Rd lot, Chatham', lat:41.6855318, lng:-69.9617291 },
+      { name:'Pleasant Lake Ave lot, Harwich', lat:41.7064333, lng:-70.0772470 },
+    ] },
+  { id:'n74', name:'Toonerville Rail-Trail',                 state:'VT',    miles:3.2,  distMi:85, surface:'Paved',          lat:43.350, lng:-72.480, url:'https://www.traillink.com/trail/toonerville-rail-trail/',                      desc:'Paved trail on the former Springfield Electric Railway (1896) shadowing the Black River through Springfield VT to the Connecticut River corridor',
+    parking:[
+      { name:'280 Clinton St lot, Springfield', lat:43.2851879, lng:-72.4712097 },
+    ] },
+  { id:'n47', name:'Southwick Rail Trail',                    state:'MA',   miles:8,    distMi:87, surface:'Paved',         lat:42.062, lng:-72.769, url:'https://www.traillink.com/trail/southwick-rail-trail/',                         desc:'Southwick MA — connects to the Farmington Canal Heritage Trail in CT',
+    parking:[
+      { name:'Miller St lot, Southwick', lat:42.0120028, lng:-72.7708011 },
+    ] },
+  { id:'n48', name:'Farmington Canal Heritage Trail',         state:'CT',   miles:20,   distMi:89, surface:'Paved',         lat:41.870, lng:-72.810, url:'https://www.traillink.com/trail/farmington-canal-heritage-trail/',              desc:'Northern CT section of the historic 84-mile canal corridor to New Haven',
+    parking:[
+      { name:'Cornwall Ave lot, Cheshire', lat:41.5004424, lng:-72.9266826 },
+      { name:'Sherman Ave lot, Hamden', lat:41.4138343, lng:-72.8959495 },
+    ] },
+  { id:'n49', name:'Norwottuck Rail Trail',                   state:'MA',   miles:10,   distMi:90, surface:'Paved',         lat:42.304, lng:-72.455, url:'https://www.traillink.com/trail/norwottuck-rail-trail/',                        desc:'Northampton to Belchertown through Amherst & Hadley — iconic Pioneer Valley ride',
+    parking:[
+      { name:'Damon Rd lot, Northampton', lat:42.3340382, lng:-72.6212472 },
+      { name:'Hadley Depot, Railroad St, Hadley', lat:42.3438439, lng:-72.5916634 },
+    ] },
+  { id:'n50', name:'Ashuwillticook Rail Trail',               state:'MA',   miles:12,   distMi:94,  surface:'Paved',               lat:42.637, lng:-73.121, url:'https://www.traillink.com/trail/ashuwillticook-rail-trail/',                        desc:'Lanesborough to Adams through the Berkshires alongside Cheshire Reservoir',
+    parking:[
+      { name:'Adams Visitor Center, 3 Hoosac St, Adams', lat:42.6247220, lng:-73.1179798 },
+      { name:'Berkshire Mall lot, Lanesborough', lat:42.4927813, lng:-73.2068638 },
+    ] },
 
   // ── Extended radius: 100–250 mi from Concord MA ──────────────────────────────
-  { id:'n75', name:'Warren to East Haverhill Railroad Grade', state:'NH',    miles:10.8, distMi:100, surface:'Gravel',         lat:43.860, lng:-71.830, url:'https://www.traillink.com/trail/warren-to-east-haverhill-railroad-grade-trail/', desc:'Former Boston & Maine corridor ascending through Glencliff where it crosses the Appalachian Trail, with White Mountain views near Warren' },
-  { id:'n76', name:'Mountain Division Trail',                state:'ME',    miles:9.6,  distMi:102, surface:'Paved/Gravel',   lat:43.860, lng:-70.690, url:'https://www.traillink.com/trail/mountain-division-trail/',                     desc:'Two segments of a planned 50+ mile Portland-to-Fryeburg trail on the Maine Central\'s Mountain Division, with mountain views and historic powder mill ruins' },
-  { id:'n51', name:'Harlem Valley Rail Trail',               state:'NY',   miles:26.4, distMi:120, surface:'Paved',               lat:41.946, lng:-73.540, url:'https://www.traillink.com/trail/harlem-valley-rail-trail/',                       desc:'Wassaic to Ancram through the scenic Harlem Valley along the NY–CT border' },
-  { id:'n77', name:'Pequonnock River Trail',                 state:'CT',    miles:14.5, distMi:124, surface:'Paved/Crushed stone', lat:41.300, lng:-73.200, url:'https://www.traillink.com/trail/pequonnock-river-trail/',                   desc:'Developing trail along one of New England\'s first railroads through Bridgeport, Trumbull, Monroe, and Newtown in southwestern CT' },
-  { id:'n52', name:'Delaware & Hudson Rail Trail',           state:'VT',   miles:19.8, distMi:125, surface:'Gravel',               lat:43.610, lng:-73.177, url:'https://fpr.vermont.gov/dh-rail-trail',                                           desc:'Castleton to Poultney in western Vermont near the NY border' },
-  { id:'n86', name:'Presidential Rail Trail',                state:'NH',    miles:19.2, distMi:126, surface:'Gravel',         lat:44.290, lng:-71.350, url:'https://www.traillink.com/trail/presidential-rail-trail/',                    desc:'Scenic 19-mile trail skirting the northern edge of the Presidential Range with White Mountain vistas and abundant wildlife between Whitefield and Gorham' },
-  { id:'n78', name:'Cross Vermont Trail',                   state:'VT',    miles:22.9, distMi:128, surface:'Gravel',         lat:44.150, lng:-72.350, url:'https://www.traillink.com/trail/cross-vermont-trail-(montpelier--wells-river-trail)/', desc:'Former Montpelier & Wells River Railroad bed through Groton State Forest, passing three state parks with backcountry mountain biking amid lakes and mountains' },
-  { id:'n79', name:'Maybrook Trailway',                     state:'NY',    miles:28.6, distMi:135, surface:'Paved',          lat:41.600, lng:-73.700, url:'https://www.traillink.com/trail/maybrook-trailway/',                             desc:'Paved trail on the former Metro-North Beacon Line through Dutchess and Putnam counties with scenic iron truss bridges, lakeside views, and AT crossings' },
-  { id:'n80', name:'Dutchess Rail Trail',                   state:'NY',    miles:13.8, distMi:138, surface:'Paved',          lat:41.630, lng:-73.780, url:'https://www.traillink.com/trail/william-r-steinhaus-dutchess-rail-trail/',       desc:'Paved 14-mile Hudson Valley rail-trail from Poughkeepsie to Hopewell Junction through dense woodland, with the restored 1873 Hopewell Depot' },
-  { id:'n81', name:'Putnam Trailway',                       state:'NY',    miles:11.8, distMi:140, surface:'Paved',          lat:41.400, lng:-73.650, url:'https://www.traillink.com/trail/putnam-trailway/',                              desc:'Paved rail-trail on the 1880s NYC Putnam Division through lake-dotted Putnam County, featuring a 1,000-foot causeway across Middle Branch Reservoir' },
-  { id:'n53', name:'Hudson Valley Rail Trail',               state:'NY',   miles:7.1,  distMi:147, surface:'Paved',               lat:41.717, lng:-74.006, url:'https://www.traillink.com/trail/hudson-valley-rail-trail/',                       desc:'Highland to New Paltz under spectacular stone-arch bridges over Black Creek' },
-  { id:'n82', name:'North County Trailway',                  state:'NY',    miles:20.7, distMi:150, surface:'Paved',          lat:41.350, lng:-73.850, url:'https://www.traillink.com/trail/north-county-trailway/',                      desc:'Paved 20-mile rail-trail on the former NYC Putnam Division through Westchester County, passing the New Croton Reservoir and Rockefeller State Park Preserve' },
-  { id:'n54', name:'Wallkill Valley Rail Trail',             state:'NY',   miles:24,   distMi:152, surface:'Gravel',               lat:41.690, lng:-74.148, url:'https://www.traillink.com/trail/wallkill-valley-rail-trail/',                     desc:'Gardiner to Rosendale over the 150-ft Rosendale Trestle with sweeping Hudson Valley views' },
-  { id:'n55', name:'Kennebec River Rail Trail',              state:'ME',   miles:6.5,  distMi:152, surface:'Paved',               lat:44.316, lng:-69.780, url:'https://www.traillink.com/trail/kennebec-river-rail-trail/',                       desc:'Augusta to Gardiner — flat paved path along the Kennebec River in central Maine' },
-  { id:'n83', name:'O&W Rail Trail',                        state:'NY',    miles:18.0, distMi:153, surface:'Paved/Gravel',   lat:41.780, lng:-74.150, url:'https://www.traillink.com/trail/ow-rail-trail-(ulster-county)/',               desc:'Former NY Ontario & Western Railway through Ulster County, transitioning from paved near Kingston to wooded gravel through High Falls, with a railroad tunnel' },
+  { id:'n75', name:'Warren to East Haverhill Railroad Grade', state:'NH',    miles:10.8, distMi:100, surface:'Gravel',         lat:43.860, lng:-71.830, url:'https://www.traillink.com/trail/warren-to-east-haverhill-railroad-grade-trail/', desc:'Former Boston & Maine corridor ascending through Glencliff where it crosses the Appalachian Trail, with White Mountain views near Warren',
+    parking:[
+      { name:'School St lot, Warren', lat:43.9249076, lng:-71.8922816 },
+    ] },
+  { id:'n76', name:'Mountain Division Trail',                state:'ME',    miles:9.6,  distMi:102, surface:'Paved/Gravel',   lat:43.860, lng:-70.690, url:'https://www.traillink.com/trail/mountain-division-trail/',                     desc:'Two segments of a planned 50+ mile Portland-to-Fryeburg trail on the Maine Central\'s Mountain Division, with mountain views and historic powder mill ruins',
+    parking:[
+      { name:'Johnson Field, Chadbourne Rd, Standish', lat:43.7917602, lng:-70.4856247 },
+      { name:'Gambo Rd lot, Windham', lat:43.7493347, lng:-70.4347271 },
+    ] },
+  { id:'n51', name:'Harlem Valley Rail Trail',               state:'NY',   miles:26.4, distMi:120, surface:'Paved',               lat:41.946, lng:-73.540, url:'https://www.traillink.com/trail/harlem-valley-rail-trail/',                       desc:'Wassaic to Ancram through the scenic Harlem Valley along the NY–CT border',
+    parking:[
+      { name:'Wassaic Metro-North Station lot', lat:41.8056992, lng:-73.5604278 },
+      { name:'South Center St lot, Millerton', lat:41.9517991, lng:-73.5096521 },
+    ] },
+  { id:'n77', name:'Pequonnock River Trail',                 state:'CT',    miles:14.5, distMi:124, surface:'Paved/Crushed stone', lat:41.300, lng:-73.200, url:'https://www.traillink.com/trail/pequonnock-river-trail/',                   desc:'Developing trail along one of New England\'s first railroads through Bridgeport, Trumbull, Monroe, and Newtown in southwestern CT',
+    parking:[
+      { name:'Tait Rd / White Plains Rd lot, Trumbull', lat:41.2500100, lng:-73.2021578 },
+    ] },
+  { id:'n52', name:'Delaware & Hudson Rail Trail',           state:'VT',   miles:19.8, distMi:125, surface:'Gravel',               lat:43.610, lng:-73.177, url:'https://fpr.vermont.gov/dh-rail-trail',                                           desc:'Castleton to Poultney in western Vermont near the NY border',
+    parking:[
+      { name:'Depot St lot, Poultney', lat:43.5182294, lng:-73.2365244 },
+    ] },
+  { id:'n86', name:'Presidential Rail Trail',                state:'NH',    miles:19.2, distMi:126, surface:'Gravel',         lat:44.290, lng:-71.350, url:'https://www.traillink.com/trail/presidential-rail-trail/',                    desc:'Scenic 19-mile trail skirting the northern edge of the Presidential Range with White Mountain vistas and abundant wildlife between Whitefield and Gorham',
+    parking:[
+      { name:'Rt 2 trailhead lot, Gorham', lat:44.3878621, lng:-71.1729953 },
+      { name:'Appalachia Trailhead, Valley Way, Randolph', lat:44.3715596, lng:-71.2889414 },
+    ] },
+  { id:'n78', name:'Cross Vermont Trail',                   state:'VT',    miles:22.9, distMi:128, surface:'Gravel',         lat:44.150, lng:-72.350, url:'https://www.traillink.com/trail/cross-vermont-trail-(montpelier--wells-river-trail)/', desc:'Former Montpelier & Wells River Railroad bed through Groton State Forest, passing three state parks with backcountry mountain biking amid lakes and mountains',
+    parking:[
+      { name:'5 Green Mountain Dr lot, Montpelier', lat:44.2584655, lng:-72.5901962 },
+    ] },
+  { id:'n79', name:'Maybrook Trailway',                     state:'NY',    miles:28.6, distMi:135, surface:'Paved',          lat:41.600, lng:-73.700, url:'https://www.traillink.com/trail/maybrook-trailway/',                             desc:'Paved trail on the former Metro-North Beacon Line through Dutchess and Putnam counties with scenic iron truss bridges, lakeside views, and AT crossings',
+    parking:[
+      { name:'Hopewell Junction Depot lot, Railroad Ave', lat:41.5848042, lng:-73.8077276 },
+      { name:'N Main St lot, Brewster', lat:41.4006605, lng:-73.6188470 },
+    ] },
+  { id:'n80', name:'Dutchess Rail Trail',                   state:'NY',    miles:13.8, distMi:138, surface:'Paved',          lat:41.630, lng:-73.780, url:'https://www.traillink.com/trail/william-r-steinhaus-dutchess-rail-trail/',       desc:'Paved 14-mile Hudson Valley rail-trail from Poughkeepsie to Hopewell Junction through dense woodland, with the restored 1873 Hopewell Depot',
+    parking:[
+      { name:'36 Railroad Ave Depot lot, Hopewell Junction', lat:41.5851317, lng:-73.8067533 },
+      { name:'61 Parker Ave lot, Poughkeepsie', lat:41.7122394, lng:-73.9248070 },
+    ] },
+  { id:'n81', name:'Putnam Trailway',                       state:'NY',    miles:11.8, distMi:140, surface:'Paved',          lat:41.400, lng:-73.650, url:'https://www.traillink.com/trail/putnam-trailway/',                              desc:'Paved rail-trail on the 1880s NYC Putnam Division through lake-dotted Putnam County, featuring a 1,000-foot causeway across Middle Branch Reservoir',
+    parking:[
+      { name:'Tilly Foster Rd lot, Brewster', lat:41.4155775, lng:-73.6436059 },
+    ] },
+  { id:'n53', name:'Hudson Valley Rail Trail',               state:'NY',   miles:7.1,  distMi:147, surface:'Paved',               lat:41.717, lng:-74.006, url:'https://www.traillink.com/trail/hudson-valley-rail-trail/',                       desc:'Highland to New Paltz under spectacular stone-arch bridges over Black Creek',
+    parking:[
+      { name:'Highland Rotary Pavilion, 101 New Paltz Rd, Highland', lat:41.7338556, lng:-73.9746444 },
+    ] },
+  { id:'n82', name:'North County Trailway',                  state:'NY',    miles:20.7, distMi:150, surface:'Paved',          lat:41.350, lng:-73.850, url:'https://www.traillink.com/trail/north-county-trailway/',                      desc:'Paved 20-mile rail-trail on the former NYC Putnam Division through Westchester County, passing the New Croton Reservoir and Rockefeller State Park Preserve',
+    parking:[
+      { name:'Underhill Ave lot, Yorktown Heights', lat:41.2674872, lng:-73.7856508 },
+    ] },
+  { id:'n54', name:'Wallkill Valley Rail Trail',             state:'NY',   miles:24,   distMi:152, surface:'Gravel',               lat:41.690, lng:-74.148, url:'https://www.traillink.com/trail/wallkill-valley-rail-trail/',                     desc:'Gardiner to Rosendale over the 150-ft Rosendale Trestle with sweeping Hudson Valley views',
+    parking:[
+      { name:'Sojourner Truth Park, New Paltz', lat:41.7432362, lng:-74.0930013 },
+      { name:'Second St lot, Gardiner', lat:41.6805419, lng:-74.1517329 },
+    ] },
+  { id:'n55', name:'Kennebec River Rail Trail',              state:'ME',   miles:6.5,  distMi:152, surface:'Paved',               lat:44.316, lng:-69.780, url:'https://www.traillink.com/trail/kennebec-river-rail-trail/',                       desc:'Augusta to Gardiner — flat paved path along the Kennebec River in central Maine',
+    parking:[
+      { name:'Capitol Park lot, Augusta', lat:44.3063760, lng:-69.7780883 },
+      { name:'100 Maine Ave (Hannaford) lot, Gardiner', lat:44.2351890, lng:-69.7720930 },
+    ] },
+  { id:'n83', name:'O&W Rail Trail',                        state:'NY',    miles:18.0, distMi:153, surface:'Paved/Gravel',   lat:41.780, lng:-74.150, url:'https://www.traillink.com/trail/ow-rail-trail-(ulster-county)/',               desc:'Former NY Ontario & Western Railway through Ulster County, transitioning from paved near Kingston to wooded gravel through High Falls, with a railroad tunnel',
+    parking:[
+      { name:'Leggett Rd lot, Stone Ridge/Marbletown', lat:41.8433064, lng:-74.1330172 },
+    ] },
   { id:'n56', name:'Stowe Recreation Path',                  state:'VT',   miles:5.5,  distMi:155, surface:'Paved',               lat:44.466, lng:-72.688, url:'https://www.traillink.com/trail/stowe-recreation-path/',                          desc:'Stowe village path through the scenic northern Vermont countryside with 255 ft of gentle gain',
-    osmNames:['Stowe Recreation Path','Stowe Recreational Path','Stowe Bike Path'] },
-  { id:'n84', name:'Whistle Stop Rail-Trail',                state:'ME',    miles:15.8, distMi:158, surface:'Gravel',         lat:44.600, lng:-70.220, url:'https://www.traillink.com/trail/whistle-stop-rail-trail/',                    desc:'16-mile rail-trail on a former Maine Central corridor through western Maine farmland and wetlands alongside the Androscoggin River' },
+    osmNames:['Stowe Recreation Path','Stowe Recreational Path','Stowe Bike Path'],
+    parking:[
+      { name:'Lintilhac Park, Main St, Stowe', lat:44.4653378, lng:-72.6848395 },
+    ] },
+  { id:'n84', name:'Whistle Stop Rail-Trail',                state:'ME',    miles:15.8, distMi:158, surface:'Gravel',         lat:44.600, lng:-70.220, url:'https://www.traillink.com/trail/whistle-stop-rail-trail/',                    desc:'16-mile rail-trail on a former Maine Central corridor through western Maine farmland and wetlands alongside the Androscoggin River',
+    parking:[
+      { name:'West Farmington trailhead lot', lat:44.6628381, lng:-70.1553394 },
+      { name:'French Falls Dr trailhead, Jay', lat:44.4947903, lng:-70.2061484 },
+    ] },
   { id:'n57', name:'Lamoille Valley Rail Trail',             state:'VT',   miles:93,   distMi:160, surface:'Crushed stone',        lat:44.543, lng:-72.594, url:'https://railtrails.vermont.gov/trails/lamoille-valley-rail-trail/',                desc:"New England's longest rail trail — 93 miles from St. Johnsbury to Swanton across 18 Vermont towns",
-    osmNames:['Lamoille Valley Rail Trail','Lamoille Valley Railroad'] },
-  { id:'n85', name:'Heritage Trail',                        state:'NY',    miles:19.4, distMi:165, surface:'Paved/Gravel',   lat:41.350, lng:-74.190, url:'https://www.traillink.com/trail/heritage-trail-(ny)/',                        desc:'Former Erie Railroad main line through Orange County NY towns of Goshen, Chester, Monroe, and Harriman, with the Chester Depot Museum along the route' },
+    osmNames:['Lamoille Valley Rail Trail','Lamoille Valley Railroad'],
+    parking:[
+      { name:'543 Main St trailhead, St Johnsbury', lat:44.4099266, lng:-72.0182061 },
+    ] },
+  { id:'n85', name:'Heritage Trail',                        state:'NY',    miles:19.4, distMi:165, surface:'Paved/Gravel',   lat:41.350, lng:-74.190, url:'https://www.traillink.com/trail/heritage-trail-(ny)/',                        desc:'Former Erie Railroad main line through Orange County NY towns of Goshen, Chester, Monroe, and Harriman, with the Chester Depot Museum along the route',
+    parking:[
+      { name:'2 S Church St lot, Goshen', lat:41.4017601, lng:-74.3238314 },
+      { name:'Chester Depot Museum, Chester', lat:41.3624533, lng:-74.2714981 },
+    ] },
   { id:'n58', name:'Island Line Trail',                      state:'VT',   miles:14,   distMi:170, surface:'Paved/Crushed stone',  lat:44.469, lng:-73.228, url:'https://www.traillink.com/trail/island-line-trail/',                             desc:'Burlington waterfront to South Hero across Lake Champlain via the 3-mile Colchester Causeway',
-    osmNames:['Island Line Trail','Island Line Rail Trail','Burlington Greenway','Colchester Causeway'] },
-  { id:'n59', name:'Catskill Scenic Trail',                  state:'NY',   miles:25.6, distMi:175, surface:'Gravel',               lat:42.230, lng:-74.640, url:'https://www.traillink.com/trail/catskill-scenic-trail/',                         desc:'Bloomville to Roxbury along the West Branch of the Delaware River in the Catskill Mountains' },
-  { id:'n87', name:'Alburgh Recreational Rail-Trail',        state:'VT',    miles:3.5,  distMi:182, surface:'Gravel',         lat:44.970, lng:-73.280, url:'https://www.traillink.com/trail/alburgh-recreational-rail-trail/',             desc:'Short rail-trail in Vermont\'s northwestern corner near the Canadian border, a premier birding destination adjacent to the Missisquoi National Wildlife Refuge' },
-  { id:'n60', name:'Missisquoi Valley Rail Trail',           state:'VT',   miles:26.3, distMi:185, surface:'Crushed stone',        lat:44.812, lng:-73.084, url:'https://www.traillink.com/trail/missisquoi-valley-rail-trail/',                   desc:'St. Albans to Richford near the Canadian border through Vermont dairy farms and cornfields' },
-  { id:'n88', name:'Kennebec Valley Trail',                 state:'ME',    miles:40.2, distMi:200, surface:'Crushed stone',  lat:45.200, lng:-69.800, url:'https://www.traillink.com/trail/kennebec-valley-trail/',                       desc:'40-mile rail-trail tracing the Kennebec River through central Maine alongside Benedict Arnold\'s 1775 Revolutionary War route, with moose and wild river scenery' },
-  { id:'n89', name:'Sussex Branch Trail',                   state:'NJ',    miles:21.2, distMi:205, surface:'Gravel',         lat:41.010, lng:-74.740, url:'https://www.traillink.com/trail/sussex-branch-trail/',                         desc:'21-mile unpaved rail-trail in northern NJ\'s Sussex County on a former Delaware, Lackawanna & Western corridor through farmland, woodlands, and Kittatinny Valley SP' },
-  { id:'n90', name:'Paulinskill Valley Trail',              state:'NJ',    miles:27.0, distMi:210, surface:'Gravel',         lat:40.950, lng:-74.850, url:'https://www.traillink.com/trail/paulinskill-valley-trail/',                    desc:'27-mile NJ rail-trail featuring the dramatic 115-foot Paulinskill Viaduct and over 100 documented bird species through rural farmland and wildlife habitat' },
-  { id:'n91', name:'Columbia Trail',                        state:'NJ',    miles:15.0, distMi:215, surface:'Paved/Crushed stone', lat:40.870, lng:-74.870, url:'https://www.traillink.com/trail/columbia-trail/',                    desc:'15-mile trail on the former Central RR of NJ High Bridge Branch, following the South Branch Raritan River through the scenic Ken Lockwood Gorge' },
-  { id:'n92', name:'Four Seasons Adventure Trail',          state:'ME',    miles:29.9, distMi:220, surface:'Crushed stone',  lat:45.160, lng:-69.160, url:'https://www.traillink.com/trail/four-seasons-adventure-trail/',               desc:'Nearly 30-mile rail-trail on the former Dexter & Newport Railroad through central Maine, skirting scenic lakes between Newport, Corinna, Dexter, and Dover-Foxcroft' },
+    osmNames:['Island Line Trail','Island Line Rail Trail','Burlington Greenway','Colchester Causeway'],
+    parking:[
+      { name:'Oakledge Park, 1 Flynn Ave, Burlington', lat:44.4559960, lng:-73.2245970 },
+      { name:'Airport Park, Colchester', lat:44.5460442, lng:-73.2797643 },
+    ] },
+  { id:'n59', name:'Catskill Scenic Trail',                  state:'NY',   miles:25.6, distMi:175, surface:'Gravel',               lat:42.230, lng:-74.640, url:'https://www.traillink.com/trail/catskill-scenic-trail/',                         desc:'Bloomville to Roxbury along the West Branch of the Delaware River in the Catskill Mountains',
+    parking:[
+      { name:'Railroad Ave / South St depot lot, Stamford', lat:42.4073024, lng:-74.6143180 },
+    ] },
+  { id:'n87', name:'Alburgh Recreational Rail-Trail',        state:'VT',    miles:3.5,  distMi:182, surface:'Gravel',         lat:44.970, lng:-73.280, url:'https://www.traillink.com/trail/alburgh-recreational-rail-trail/',             desc:'Short rail-trail in Vermont\'s northwestern corner near the Canadian border, a premier birding destination adjacent to the Missisquoi National Wildlife Refuge',
+    parking:[
+      { name:'Alburgh Lakeshore Park, Trestle Dr, Alburgh', lat:44.9718783, lng:-73.2298824 },
+    ] },
+  { id:'n60', name:'Missisquoi Valley Rail Trail',           state:'VT',   miles:26.3, distMi:185, surface:'Crushed stone',        lat:44.812, lng:-73.084, url:'https://www.traillink.com/trail/missisquoi-valley-rail-trail/',                   desc:'St. Albans to Richford near the Canadian border through Vermont dairy farms and cornfields',
+    parking:[
+      { name:'St Albans Park & Ride, 48 Fairfax Rd, St Albans', lat:44.7906686, lng:-73.0750361 },
+    ] },
+  { id:'n88', name:'Kennebec Valley Trail',                 state:'ME',    miles:40.2, distMi:200, surface:'Crushed stone',  lat:45.200, lng:-69.800, url:'https://www.traillink.com/trail/kennebec-valley-trail/',                       desc:'40-mile rail-trail tracing the Kennebec River through central Maine alongside Benedict Arnold\'s 1775 Revolutionary War route, with moose and wild river scenery',
+    parking:[
+      { name:'Falls Rd lot, Solon', lat:44.9587250, lng:-69.8650415 },
+    ] },
+  { id:'n89', name:'Sussex Branch Trail',                   state:'NJ',    miles:21.2, distMi:205, surface:'Gravel',         lat:41.010, lng:-74.740, url:'https://www.traillink.com/trail/sussex-branch-trail/',                         desc:'21-mile unpaved rail-trail in northern NJ\'s Sussex County on a former Delaware, Lackawanna & Western corridor through farmland, woodlands, and Kittatinny Valley SP',
+    parking:[
+      { name:'Waterloo Rd lot, Allamuchy Mountain SP', lat:40.8866947, lng:-74.8028061 },
+    ] },
+  { id:'n90', name:'Paulinskill Valley Trail',              state:'NJ',    miles:27.0, distMi:210, surface:'Gravel',         lat:40.950, lng:-74.850, url:'https://www.traillink.com/trail/paulinskill-valley-trail/',                    desc:'27-mile NJ rail-trail featuring the dramatic 115-foot Paulinskill Viaduct and over 100 documented bird species through rural farmland and wildlife habitat',
+    parking:[
+      { name:'Footbridge Park, 5 Foot Bridge Ln, Blairstown', lat:40.9808626, lng:-74.9586865 },
+    ] },
+  { id:'n91', name:'Columbia Trail',                        state:'NJ',    miles:15.0, distMi:215, surface:'Paved/Crushed stone', lat:40.870, lng:-74.870, url:'https://www.traillink.com/trail/columbia-trail/',                    desc:'15-mile trail on the former Central RR of NJ High Bridge Branch, following the South Branch Raritan River through the scenic Ken Lockwood Gorge',
+    parking:[
+      { name:'Main St lot, High Bridge', lat:40.6705673, lng:-74.8955715 },
+      { name:'Schooleys Mountain Rd lot, Long Valley', lat:40.7816814, lng:-74.7592328 },
+    ] },
+  { id:'n92', name:'Four Seasons Adventure Trail',          state:'ME',    miles:29.9, distMi:220, surface:'Crushed stone',  lat:45.160, lng:-69.160, url:'https://www.traillink.com/trail/four-seasons-adventure-trail/',               desc:'Nearly 30-mile rail-trail on the former Dexter & Newport Railroad through central Maine, skirting scenic lakes between Newport, Corinna, Dexter, and Dover-Foxcroft',
+    parking:[
+      { name:'23 Spring St lot, Newport', lat:44.8347701, lng:-69.2763140 },
+      { name:'Dover-Foxcroft trailhead', lat:45.1834890, lng:-69.2276000 },
+    ] },
 ];
 
 document.getElementById('stat-nearby-total').textContent = NEARBY_TRAILS.length;
@@ -1122,6 +1515,43 @@ function nearbyIcon() {
   });
 }
 
+// Small square "P" badge — visually distinct from the round nearby-trail dots
+// so parking spots read as their own marker type at a glance on the map.
+function parkingIcon() {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:16px;height:16px;border-radius:4px;background:white;border:2px solid #2563b0;box-shadow:0 1px 4px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font:700 10px/1 -apple-system,sans-serif;color:#2563b0">P</div>`,
+    iconSize: [16,16], iconAnchor:[8,8], popupAnchor:[0,-10]
+  });
+}
+
+// Parking pins stay hidden on the map until the rider actually clicks that
+// trail (its line/dot or popup), so the map isn't cluttered with every seeded
+// lot up front. Once revealed, a trail's pins stay visible for the rest of
+// the session (not persisted — a page refresh hides them again).
+const revealedParkingTrailIds = new Set();
+const parkingMarkersByTrail = {}; // trail id → [markers], so we never add the same trail's pins twice
+
+function addParkingMarkersForTrail(n) {
+  if (!n.parking?.length || parkingMarkersByTrail[n.id]) return;
+  parkingMarkersByTrail[n.id] = n.parking.map(spot =>
+    L.marker([spot.lat, spot.lng], { icon: parkingIcon(), zIndexOffset: 100 })
+      .addTo(map)
+      .bindPopup(`
+        <div class="lf-popup-name">🅿️ ${escHtml(spot.name)}</div>
+        <div class="lf-popup-meta">${escHtml(n.name)}</div>
+        <div class="lf-popup-links"><a href="${appleMapsUrl(spot)}" target="_blank" rel="noopener">Directions in Apple Maps ↗</a></div>
+      `, { maxWidth: 220 })
+  );
+}
+
+function revealParkingForTrail(trailId) {
+  if (revealedParkingTrailIds.has(trailId)) return;
+  revealedParkingTrailIds.add(trailId);
+  const n = NEARBY_TRAILS.find(t => t.id === trailId);
+  if (n) addParkingMarkersForTrail(n);
+}
+
 function buildRiddenPopup(t, titleName) {
   const linkedIds = [t.nearbyId, ...(t.extraNearbyIds || [])].filter(Boolean);
   const linkedTrails = linkedIds.map(id => NEARBY_TRAILS.find(n => n.id === id)).filter(Boolean);
@@ -1160,6 +1590,36 @@ function closestLinkedTrailName(t, latlng) {
   return bestName;
 }
 
+// Universal Apple Maps link — opens the native app on iOS/Mac, falls back to
+// Apple Maps web elsewhere. `q` labels the pin with the parking lot's name.
+function appleMapsUrl(spot) {
+  // `ll` + `q` just drops a labeled pin — `daddr` would instead kick off
+  // turn-by-turn directions immediately, which isn't what a rider wants when
+  // just checking out a lot before picking one.
+  return `https://maps.apple.com/?ll=${spot.lat},${spot.lng}&q=${encodeURIComponent(spot.name)}`;
+}
+
+// One Apple Maps link per parking spot (if any), labeled with the spot's
+// actual address/name rather than a generic "Lot N" so riders can tell which
+// one they want before clicking through.
+function parkingLinksHtml(n, linkClass) {
+  if (!n.parking?.length) return '';
+  return n.parking.map(spot =>
+    `<a class="${linkClass}" href="${appleMapsUrl(spot)}" target="_blank" rel="noopener">🅿️ ${escHtml(spot.name)}</a>`
+  ).join('');
+}
+
+// One parking spot per row (rather than inline alongside TrailLink/Maps) so
+// the full lot address is readable instead of getting squeezed into a
+// same-row button — used in the map popup, underneath the other info.
+function parkingRowsHtml(n) {
+  if (!n.parking?.length) return '';
+  const rows = n.parking.map(spot =>
+    `<a href="${appleMapsUrl(spot)}" target="_blank" rel="noopener">🅿️ ${escHtml(spot.name)}</a>`
+  ).join('');
+  return `<div class="lf-popup-parking">${rows}</div>`;
+}
+
 function buildNearbyPopup(n) {
   const ridden = riddenForNearby(n.id);
   const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${n.lat},${n.lng}`;
@@ -1176,6 +1636,7 @@ function buildNearbyPopup(n) {
       <a href="${n.url}" target="_blank" rel="noopener">TrailLink ↗</a>
       <a href="${gmapsUrl}" target="_blank" rel="noopener">Maps ↗</a>
     </div>
+    ${parkingRowsHtml(n)}
     ${!hasLine && !ignored ? `<button class="lf-popup-log" id="loadline-${n.id}" onclick="forceLoadTrailLine('${n.id}')">🔄 Load trail path</button>` : ''}
     ${!ridden ? `<button class="lf-popup-log" onclick="logRideFromNearby('${n.id}')">+ Log a Ride</button>` : ''}`;
 }
@@ -1224,7 +1685,14 @@ function addRiddenToMap(t) {
     layer = L.marker([t.lat, t.lng], { icon: riddenIcon() })
       .addTo(map).bindPopup(buildRiddenPopup(t));
   }
-  if (layer) mapLayers[t.id] = layer;
+  if (layer) {
+    mapLayers[t.id] = layer;
+    // Clicking a ridden trail directly on the map also reveals parking for
+    // whichever trail(s) it's linked to (a ride can span more than one).
+    layer.on('popupopen', () => {
+      [t.nearbyId, ...(t.extraNearbyIds || [])].filter(Boolean).forEach(revealParkingForTrail);
+    });
+  }
 }
 
 const NEARBY_LINE_COLOR = '#2563b0'; // matches --blue
@@ -1255,6 +1723,10 @@ function refreshNearbyMarkers() {
         ? L.polyline(segments, { color: NEARBY_LINE_COLOR, weight: 5, opacity: 0.9, lineCap: 'round' })
         : L.marker([n.lat, n.lng], { icon: nearbyIcon(), zIndexOffset: -10 });
       layer.addTo(map).bindPopup(buildNearbyPopup(n), { maxWidth: 220 });
+      // Reveal this trail's parking pins the first time its popup is opened —
+      // covers both clicking the trail directly on the map and clicking its
+      // Nearby card (which opens the popup programmatically via focusNearby).
+      layer.on('popupopen', () => revealParkingForTrail(n.id));
       nearbyMarkers[n.id] = layer;
       nearbyIsLine[n.id] = wantLine;
       if (wasOpen) layer.openPopup();
@@ -1302,6 +1774,7 @@ function focusRidden(id) {
 function focusNearby(id) {
   const n = NEARBY_TRAILS.find(x => x.id === id);
   if (!n) return;
+  revealParkingForTrail(id); // clicking a trail from the Nearby card counts as "clicking the trail" too
   // If ridden and has polyline, show that
   const ridden = riddenForNearby(id);
   if (ridden && mapLayers[ridden.id]) {
@@ -1514,6 +1987,7 @@ function renderNearby() {
             <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="7" r="3"/><path d="M8 2C5.24 2 3 4.24 3 7c0 4 5 8 5 8s5-4 5-8c0-2.76-2.24-5-5-5z"/></svg>
             Map
           </a>
+          ${parkingLinksHtml(n, 'link-btn')}
           ${!ridden ? `<button class="log-btn" onclick="openModalFromNearby('${n.id}')">+ Log Ride</button>` : ''}
         </div>
       </div>`;
@@ -3103,6 +3577,8 @@ function fmtDate(iso) {
   trails.forEach(t => { delete t.status; });
   await Promise.all([loadTrailGeometryCache(), loadIgnoredTrails(), loadTrailFailureCounts()]); // fast — hydrates trail lines + ignore list + retry-cap state before first render
   render();
+  // Parking pins are revealed per-trail on click (see revealParkingForTrail),
+  // not rendered eagerly — keeps the map uncluttered until a rider asks for them.
   fetchAllNearbyTrailLines(); // background — only fetches trails still missing from the cache
 })();
 </script>

@@ -52,7 +52,10 @@ Hardcoded array of 100+ trails. IDs are non-contiguous (`n1`–`n60` from the or
   lng: -71.228,
   url: 'https://...',
   desc: 'One-line description',
-  osmNames: ['Alias 1', 'Alias 2']   // optional — for OSM matching (see below)
+  osmNames: ['Alias 1', 'Alias 2'],  // optional — for OSM matching (see below)
+  parking: [                         // optional — up to 3 real trailhead lots, roughly start/middle/end
+    { name: 'Lot name, street, town', lat: 42.xxx, lng: -71.xxx },
+  ]
 }
 ```
 
@@ -67,6 +70,12 @@ Minimum trail length for inclusion is 2.5 miles, with rare manual exceptions for
 The Mass Central Rail Trail is tracked as multiple separate entries (`n98`–`n105`, prefixed "Mass Central RT — ...") rather than one single trail, since it's actually many independently-built, non-contiguous rideable sections. The Norwottuck Branch section is tracked separately under its own historical name/id (`n49`) rather than under the Mass Central RT prefix.
 
 **Nearby tab filters**: surface filter chips (Paved, Gravel, etc.) plus an "Unridden" chip that sits right after "All", styled identically but toggling independently (`nearbyHideRidden`, defaults to `true`/active) — both a surface filter and "Unridden" can be active at the same time, since they filter different dimensions.
+
+**Parking**: the optional `parking` array (real, non-fabricated trailhead lots — geocoded via OSM Nominatim or sourced from official trail/town sites, never guessed) is rendered as one 🅿️ Apple Maps link per spot, labeled with the spot's actual address/name (not a generic "Lot N"), via `appleMapsUrl()` which builds a universal `maps.apple.com/?daddr=...&q=...` link (opens the native app on iOS/Mac, falls back to Apple Maps web elsewhere). Two different layouts for two different spots: the Nearby card uses `parkingLinksHtml()` (compact inline buttons, matching Source/Map) while the map popup (`buildNearbyPopup()`) uses `parkingRowsHtml()` — one full-width row per lot underneath the TrailLink/Maps links, so a long lot address is fully readable instead of being squeezed into a same-row button.
+
+Parking pins are plotted directly on the main map as their own square "P" markers (`parkingIcon()`/`addParkingMarkersForTrail()`), but stay hidden until that specific trail is clicked — either directly on the map (its dot/line, or a ridden trail's green line) or via its Nearby card — via a `popupopen` listener on each trail's layer calling `revealParkingForTrail(id)` (also called directly from `focusNearby()` since a ridden trail's card click routes through `focusRidden()` instead of opening the nearby-marker popup). Once revealed, a trail's pins stay visible for the rest of the session (`revealedParkingTrailIds`, session-only — a page refresh hides them again); `parkingMarkersByTrail` guards against adding the same trail's pins twice. Clicking a pin pops up the lot address, trail name, and the same Apple Maps directions link.
+
+As of this writing 103 of 104 trails have real parking data (only `n06` Wakefield-Lynnfield Rail Trail is excluded — it isn't open to the public yet per official sources). All spots were sourced from official trail/town/state sites and geocoded via OSM Nominatim, never fabricated; when a query returned an implausible match (e.g. wrong state/region), a more specific query was used or a town-center fallback was substituted with a note in the entry's `name`. Filling in the remaining trail (`n06`) once it opens, and periodically re-verifying stale addresses, is ongoing maintenance rather than a one-shot migration.
 
 **Map tiles**: both the main map and the match-picker map use CartoDB Voyager tiles (`basemaps.cartocdn.com/rastertiles/voyager`), not stock OpenStreetMap raster tiles — Voyager keeps street names/road network visible but doesn't bake in highway route-shield numbers (I-190, MA-2, etc.) the way stock OSM tiles do.
 
