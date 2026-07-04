@@ -67,7 +67,7 @@ Trails are split into two radius bands, visually separated by a `.radius-divider
 
 The divider is inserted automatically by `renderNearby()` the first time it hits an entry with `distMi > 100` while iterating — array order should roughly ascend by `distMi`, but exact sorting isn't required as long as all `>100` entries come after all `<=100` entries.
 
-Minimum trail length for inclusion is 2.5 miles, with rare manual exceptions for well-known short spurs (e.g. Whitney Spur Rail Trail, 1.6 mi).
+Minimum trail length for inclusion is 2.5 miles, with rare manual exceptions for well-known short spurs (e.g. Whitney Spur Rail Trail, 1.6 mi) or trails otherwise worth including despite falling under whatever length bar applies (e.g. `n110` Battle Road Trail, 4.9 mi, just under the newer ≥5mi non-rail-trail bar, kept anyway as the closest good trail to the user's home; `n111` Yankee Doodle Bike Path, 4 mi and still under construction as of 2026, added anyway per explicit user request — its `desc` notes it may not be rideable/mappable yet).
 
 The Mass Central Rail Trail is tracked as multiple separate entries (`n98`–`n105`, prefixed "Mass Central RT — ...") rather than one single trail, since it's actually many independently-built, non-contiguous rideable sections. The Norwottuck Branch section is tracked separately under its own historical name/id (`n49`) rather than under the Mass Central RT prefix.
 
@@ -158,7 +158,7 @@ The "📡 Queue" tab (`switchTab('queue')`, `renderQueuePanel()`) gives visibili
 
 ```bash
 docker pull marstonstudio/rail-trail-tracker:latest
-docker-compose -f /volume1/docker/rail-trail-tracker/docker-compose.yaml up -d
+docker compose -f /volume1/docker/rail-trail-tracker/docker-compose.yaml up -d
 ```
 
 The actual compose file on the NAS lives at `/volume1/docker/rail-trail-tracker/docker-compose.yaml` (not the repo root) — it's a copy of `docker-compose.nas.yml`, kept in sync manually. Data volume is `/volume1/docker/rail-trail-tracker/data:/data`. Env var is `RIDES_FILE` (not `DATA_FILE`); healthcheck hits `/api/rides` (not `/api/trails`).
@@ -185,7 +185,6 @@ On startup, `server.js` auto-migrates `trails.json` → `rides.json` if the old 
 
 - Commits and pushes can be done via `git` CLI directly — no need for GitHub Desktop
 - Use Docker Hub API (web fetch / curl) for monitoring CI, not browser automation
-- The NAS is at `ugreen.local:3000` when on the local network
 - Always test changes locally at `localhost:3000` before committing and pushing
 - When the user is mid-session making multiple changes, hold off on `git commit`/`git push` until they explicitly say to — don't commit after every individual edit
 - Before committing, always check whether CLAUDE.md needs updating to reflect what changed (new API endpoints, new UI behavior, new architectural decisions) and update it as part of the same commit — don't let it drift stale
