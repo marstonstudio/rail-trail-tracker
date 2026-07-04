@@ -1540,7 +1540,7 @@ function addParkingMarkersForTrail(n) {
       .bindPopup(`
         <div class="lf-popup-name">🅿️ ${escHtml(spot.name)}</div>
         <div class="lf-popup-meta">${escHtml(n.name)}</div>
-        <div class="lf-popup-links"><a href="${appleMapsUrl(spot)}" target="_blank" rel="noopener">Directions in Apple Maps ↗</a></div>
+        <div class="lf-popup-links"><a href="${appleMapsUrl(spot)}" target="_blank" rel="noopener">Open in Apple Maps ↗</a></div>
       `, { maxWidth: 220 })
   );
 }
@@ -3459,6 +3459,11 @@ function getTrailQueueStatus(id) {
   const entry = trailFetchStatus[id];
   if (entry) return entry.status;
   if (TRAIL_POLYLINES?.[id]?.length > 0) return 'success';
+  // A trail that already exhausted its auto-retry cap in a past session gets
+  // skipped by the background loop before it ever sets a live status, which
+  // would otherwise leave it stuck showing "pending" (implying it's still
+  // waiting its turn) forever instead of surfacing as a real not-found.
+  if (autoRetryExhausted(id)) return 'not-found';
   return 'pending';
 }
 
