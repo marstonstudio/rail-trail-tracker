@@ -1032,6 +1032,7 @@ const NEARBY_TRAILS = [
       { name:'28 Oak Hill Rd lot (softball field), Brookline', lat:42.7165260, lng:-71.6507720 },
     ] },
   { id:'n11', name:'Upper Charles Rail Trail',               state:'MA',    miles:9,    distMi:25, surface:'Paved',         lat:42.195, lng:-71.456, url:'https://www.traillink.com/trail/upper-charles-rail-trail/',                        desc:'Holliston to Milford through the Upper Charles River valley',
+    osmNames:['Upper Charles Trail', 'Upper Charles Trail Phase Connector', 'Upper Charles Trail Phase 3'],
     parking:[
       { name:'Central St lot, Holliston', lat:42.1982181, lng:-71.4058737 },
       { name:'Cedar St (Rt 85) lot, Milford', lat:42.1584670, lng:-71.5069972 },
@@ -2323,12 +2324,12 @@ let pendingDiscovered = [];
 // Set of quantised bbox keys we've already queried this session (avoid re-fetching).
 const fetchedBboxKeys = new Set();
 
-// Bump this whenever the trail-matching/name-scoring logic changes in a way
-// that could change which OSM geometry gets attributed to a trail (e.g. the
-// NAME_STOP word list, distance sanity checks, scoring thresholds). Cached
-// entries stamped with an older version are treated as stale and silently
-// re-fetched — no manual cache-clearing needed on deploy.
-const TRAIL_GEOM_LOGIC_VERSION = 4; // v4: added osmNames aliases for n22/n69/n74/n83/n85/n92 (real OSM names differ from declared trail names)
+// Bump this whenever the trail-matching logic changes in a way that could
+// change which OSM geometry gets attributed to a trail (e.g. namesMatch(),
+// distance sanity checks, an osmNames alias). Cached entries stamped with an
+// older version are treated as stale and silently re-fetched — no manual
+// cache-clearing needed on deploy.
+const TRAIL_GEOM_LOGIC_VERSION = 5; // v5: replaced fuzzy keyword-overlap name scoring with exact-name-only matching — fuzzy scoring caused real contamination (e.g. "River Trail" in Carlisle merged into n03 Assabet River Rail Trail, "Northern Avenue" in Seaport merged into n04 Northern Strand Community Trail)
 
 // Load every trail's previously-cached geometry from the server in one request.
 // Entries cached under an older matching-logic version are skipped (left
@@ -2387,21 +2388,22 @@ const IS_PROD_BUILD = (() => {
 // Overpass quota just from routine local iteration.
 const BACKGROUND_FETCH_PACE_MS = IS_PROD_BUILD ? 0 : 4000;
 
-// Stop-words excluded when comparing trail names.
-// Deliberately excludes geographically-distinctive words like river/creek/lake/pond —
-// those are often the ONLY thing telling two similarly-generic trail names apart
-// (e.g. "Nashua River Rail Trail" vs the unrelated "Nashua Acton & Boston Railroad
-// Trail" — stripping "river" left just "nashua", a single word both names share,
-// which caused an unrelated trail 16 miles away to be merged in as a false match).
-const NAME_STOP = new Set(['rail','trail','bikeway','greenway','path','the','and','of','in',
-                            'to','a','an','state','park',
-                            'road','street','recreational','heritage','community','linear']);
-
-function nameMatchScore(osmName, trailName) {
-  const osmWords = new Set(osmName.toLowerCase().split(/\W+/).filter(w => w.length > 2 && !NAME_STOP.has(w)));
-  const keys     = trailName.toLowerCase().split(/\W+/).filter(w => w.length > 2 && !NAME_STOP.has(w));
-  if (!keys.length) return 0;
-  return keys.filter(w => osmWords.has(w)).length / keys.length;
+// Fuzzy keyword-overlap matching used to live here and repeatedly caused real
+// contamination — e.g. "River Trail" in Carlisle (14mi away) auto-matched
+// "Assabet River Rail Trail" on the single shared word "River", and "Northern
+// Avenue" in Boston's Seaport auto-matched "Northern Strand Community Trail"
+// on "Northern". No fuzzy threshold is safe against this class of false
+// positive, since short trail names routinely share one distinctive word with
+// an unrelated real street/path somewhere in a multi-mile search radius.
+// Matching is now exact-name-only (case/whitespace-insensitive) against a
+// trail's declared `name` and its curated `osmNames` aliases — anything that
+// doesn't match exactly is surfaced as a "discovered" trail for the user to
+// review instead of being auto-cached. If a real trail's OSM name differs
+// from its declared name, add the real name to that trail's `osmNames` array
+// (verified against a real source first) rather than loosening this match.
+function namesMatch(osmName, candidateName) {
+  const norm = s => s.trim().toLowerCase().replace(/\s+/g, ' ');
+  return norm(osmName) === norm(candidateName);
 }
 
 /**
@@ -2456,28 +2458,23 @@ out geom qt;`;
       const wLat    = pts.reduce((sum, p) => sum + p[0], 0) / pts.length;
       const wLng    = pts.reduce((sum, p) => sum + p[1], 0) / pts.length;
 
-      // Try to match to a known NEARBY_TRAIL (check name + any osmNames aliases),
-      // but only among trails whose declared location is plausibly nearby this way.
-      // Without this, trails that share a generic name prefix (e.g. several
-      // "Mass Central RT — ..." segments) can steal geometry that actually
-      // belongs to a completely different, far-away segment.
-      // Score is the primary key, but several same-family trails (e.g. "Mass
-      // Central RT — ..." segments) routinely tie on score because the real
-      // OSM way name is often just the generic trail name with no
-      // segment-specific qualifier — so on a tie, prefer whichever candidate
-      // is geographically closest to this way's actual geometry, instead of
-      // silently keeping whichever trail happened to appear first in the array.
-      let bestId = null, bestScore = 0.5, bestDist = Infinity; // threshold: at least 50% keyword overlap
+      // Match to a known NEARBY_TRAIL only on an exact name (or osmNames alias)
+      // match, among trails whose declared location is plausibly nearby this
+      // way. The distance cap alone isn't enough to prevent false matches
+      // (see namesMatch() above for why fuzzy scoring was removed) — exact
+      // naming is the only thing that's actually safe. Several same-family
+      // trails (e.g. "Mass Central RT — ..." segments) can genuinely share
+      // one real OSM name across multiple declared entries, so on an exact-name
+      // tie, prefer whichever candidate is geographically closest to this
+      // way's actual geometry rather than whichever appears first in the array.
+      let bestId = null, bestDist = Infinity;
       for (const t of NEARBY_TRAILS) {
         if (!t.lat || !t.lng) continue;
         const dist = haversineMi(wLat, wLng, t.lat, t.lng);
         if (dist > 20) continue;
         const namesToCheck = [t.name, ...(t.osmNames || [])];
-        for (const n of namesToCheck) {
-          const s = nameMatchScore(osmName, n);
-          if (s > bestScore || (s === bestScore && dist < bestDist)) {
-            bestScore = s; bestId = t.id; bestDist = dist;
-          }
+        if (namesToCheck.some(n => namesMatch(osmName, n)) && dist < bestDist) {
+          bestId = t.id; bestDist = dist;
         }
       }
 
@@ -2665,28 +2662,25 @@ async function fetchTrailPolylineDirectAttempt(trail) {
     if (!resp.ok) return { segments: null, rateLimited: true };
     const json = await resp.json();
 
+    // Exact-name match only (trail's declared name or a curated osmNames
+    // alias) — no fuzzy scoring, see namesMatch() for why. Every matching way
+    // is combined into one segments list; since each is a confirmed exact
+    // match there's no risk of pulling in unrelated geometry.
     const namesToCheck = [trail.name, ...(trail.osmNames || [])];
-    const groups = {}; // osmName → { score, segments: [][] }
+    const segments = [];
     for (const el of (json.elements || [])) {
       if (!el.geometry || !el.tags?.name) continue;
-      let score = 0;
-      for (const n of namesToCheck) score = Math.max(score, nameMatchScore(el.tags.name, n));
-      if (score < 0.35) continue; // looser than the bbox-wide scan — we know exactly which trail we want
-      if (!groups[el.tags.name]) groups[el.tags.name] = { score, segments: [] };
+      if (!namesToCheck.some(n => namesMatch(el.tags.name, n))) continue;
       // Push as its own segment — never merge with other ways' points, which
       // would draw a phantom straight line across the gap between two
       // disconnected pieces of the trail (and corrupt overlap scoring).
-      groups[el.tags.name].segments.push(el.geometry.map(g => [g.lat, g.lon]));
+      segments.push(el.geometry.map(g => [g.lat, g.lon]));
     }
 
-    const totalPts = g => g.segments.reduce((s, seg) => s + seg.length, 0);
-    let best = null;
-    for (const g of Object.values(groups)) {
-      if (!best || g.score > best.score || (g.score === best.score && totalPts(g) > totalPts(best))) best = g;
-    }
-    if (best && totalPts(best) >= 4) {
+    const totalPts = segments.reduce((s, seg) => s + seg.length, 0);
+    if (totalPts >= 4) {
       if (!TRAIL_POLYLINES) TRAIL_POLYLINES = {};
-      TRAIL_POLYLINES[trail.id] = downsampleSegments(best.segments, MAX_CACHED_PTS);
+      TRAIL_POLYLINES[trail.id] = downsampleSegments(segments, MAX_CACHED_PTS);
       persistTrailGeometry(trail.id, TRAIL_POLYLINES[trail.id]);
       return { segments: TRAIL_POLYLINES[trail.id], rateLimited: false };
     }
