@@ -7,6 +7,13 @@ const PORT       = process.env.PORT       || 3000;
 const RIDES_FILE = process.env.RIDES_FILE || '/data/rides.json';
 const FITS_DIR   = path.join(path.dirname(RIDES_FILE), 'fits');
 const TRAIL_GEOM_DIR = path.join(path.dirname(RIDES_FILE), 'trail-geometry');
+// Committed-to-git seed data (public/trail-geometry-seed) — once a trail's real
+// OSM path has been fetched and verified, it's checked in here so the app never
+// depends on Overpass being reachable just to show a trail that's already known
+// good. TRAIL_GEOM_DIR (the writable runtime cache) is only for trails not yet
+// promoted into the seed, or a fresher fetch not yet committed — it always wins
+// over the seed when both exist for the same trail.
+const TRAIL_GEOM_SEED_DIR = path.join(__dirname, 'trail-geometry-seed');
 const IGNORED_TRAILS_FILE = path.join(path.dirname(RIDES_FILE), 'ignored-trails.json');
 const FETCH_FAILURES_FILE = path.join(path.dirname(RIDES_FILE), 'trail-fetch-failures.json');
 const SAFE_KEY   = /^[a-zA-Z0-9_-]{1,80}$/;
@@ -93,17 +100,24 @@ app.get('/api/fits/:key', (req, res) => {
 // ── GET /api/trail-geometry — bulk-load all cached trail geometry in one shot ─
 // { [trailId]: segments } so the client can hydrate its map cache with a
 // single request at startup instead of one Overpass fetch per trail.
-app.get('/api/trail-geometry', (req, res) => {
-  if (!fs.existsSync(TRAIL_GEOM_DIR)) return res.json({});
-  const out = {};
-  for (const file of fs.readdirSync(TRAIL_GEOM_DIR)) {
+// Merges the committed seed (source of truth for already-verified trails)
+// with the writable runtime cache, which wins on conflict — see
+// TRAIL_GEOM_SEED_DIR above.
+function readGeomDir(dir, out) {
+  if (!fs.existsSync(dir)) return;
+  for (const file of fs.readdirSync(dir)) {
     if (!file.endsWith('.json')) continue;
     const id = file.slice(0, -5);
     if (!SAFE_KEY.test(id)) continue;
     try {
-      out[id] = JSON.parse(fs.readFileSync(path.join(TRAIL_GEOM_DIR, file), 'utf8'));
+      out[id] = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
     } catch { /* skip corrupt file */ }
   }
+}
+app.get('/api/trail-geometry', (req, res) => {
+  const out = {};
+  readGeomDir(TRAIL_GEOM_SEED_DIR, out);
+  readGeomDir(TRAIL_GEOM_DIR, out); // runtime cache overrides seed
   res.json(out);
 });
 

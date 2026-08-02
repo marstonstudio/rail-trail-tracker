@@ -162,51 +162,6 @@
     }
     .reset-btn:hover { background: #fee; border-color: #fbb; }
 
-    /* ── Queue tab ──────────────────────────────────────────────────────────── */
-    #panel-queue { padding: 12px; overflow-y: auto; }
-    .queue-summary {
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
-      margin-bottom: 12px;
-    }
-    .queue-stat {
-      border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
-      font-size: 0.72rem; color: var(--muted); text-align: center;
-    }
-    .queue-stat-num { display: block; font-size: 1.15rem; font-weight: 700; color: var(--text); }
-    .queue-stat-warn .queue-stat-num { color: #b8860b; }
-    .queue-stat-err .queue-stat-num { color: #c44; }
-    .queue-section { margin-bottom: 16px; }
-    .queue-section-title {
-      display: flex; align-items: center; justify-content: space-between; gap: 8px;
-      font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 0.04em; color: var(--muted); margin-bottom: 6px;
-    }
-    .queue-copy-prompt-btn {
-      text-transform: none; letter-spacing: normal; font-size: 0.72rem; font-weight: 600;
-      padding: 3px 8px; border: 1px solid var(--border); border-radius: 6px;
-      background: var(--bg); color: var(--text); cursor: pointer; white-space: nowrap;
-    }
-    .queue-copy-prompt-btn:hover { background: #eee; }
-    .queue-row {
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 8px; padding: 5px 0; font-size: 0.82rem; border-bottom: 1px solid var(--border);
-    }
-    .queue-row:last-child { border-bottom: none; }
-    .queue-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .queue-row-link { flex-shrink: 0; text-decoration: none; font-size: 0.9rem; }
-    .queue-exhausted-note { font-size: 0.68rem; color: var(--muted); font-weight: 600; white-space: nowrap; }
-    .queue-pause-btn {
-      width: 100%; margin-bottom: 10px; padding: 7px; font-size: 0.8rem;
-      border: 1px solid var(--border); border-radius: 7px; background: var(--bg);
-      color: var(--text); cursor: pointer; font-weight: 600;
-    }
-    .queue-pause-btn:hover { background: #eee; }
-    .queue-pause-btn.is-paused { border-color: var(--green); color: var(--green); background: var(--green-light); }
-    .queue-paused-note {
-      font-size: 0.76rem; color: var(--muted); background: var(--bg);
-      border-radius: 7px; padding: 7px 9px; margin-bottom: 12px;
-    }
-
     /* ── Trail group cards (consolidated ride view) ───────────────────────────── */
     .trail-group {
       border-radius: 8px;
@@ -804,7 +759,6 @@
     <div class="sidebar-tabs">
       <button class="tab active" onclick="switchTab('rides')" id="tab-rides">✅ My Rides</button>
       <button class="tab" onclick="switchTab('nearby')" id="tab-nearby">🗺️ Nearby <span id="nearby-count-badge" style="font-weight:400;opacity:.7">(17)</span></button>
-      <button class="tab" onclick="switchTab('queue')" id="tab-queue">📡 Queue <span id="queue-badge" style="font-weight:400;opacity:.7"></span></button>
     </div>
     <div class="tab-panel active" id="panel-rides">
       <div class="panel-header" id="rides-panel-header" style="display:none">
@@ -816,9 +770,6 @@
     <div class="tab-panel" id="panel-nearby">
       <div class="nearby-filter" id="surface-filter"></div>
       <div class="trail-list" id="list-nearby"></div>
-    </div>
-    <div class="tab-panel" id="panel-queue">
-      <div id="queue-content"></div>
     </div>
   </div>
 </div>
@@ -943,6 +894,7 @@ const NEARBY_TRAILS = [
       { name:'Keyes Rd lot, Concord',                     lat:42.4618429, lng:-71.3525761 },
     ] },
   { id:'n02', name:'Minuteman Commuter Bikeway',             state:'MA',    miles:10.1, distMi:5,  surface:'Paved',         lat:42.476, lng:-71.257, url:'https://www.traillink.com/trail/minuteman-commuter-bikeway/',                       desc:'Bedford to Alewife through Lexington & Arlington',
+    osmNames:['Minuteman Bikeway'],
     parking:[
       { name:'Bedford Depot Park, Loomis St, Bedford', lat:42.4878782, lng:-71.2738916 },
       { name:'Margaret St lot, Arlington',             lat:42.4027239, lng:-71.1467090 },
@@ -1038,36 +990,44 @@ const NEARBY_TRAILS = [
       { name:'Cedar St (Rt 85) lot, Milford', lat:42.1584670, lng:-71.5069972 },
     ] },
   { id:'n98',  name:'Mass Central RT — Weston-Wayland Segment', state:'MA',  miles:4.9,  distMi:10, surface:'Paved',         lat:42.366, lng:-71.375, url:'https://www.masscentralrailtrail.org/wayland',                                   desc:'Flat paved segment past the historic Wayland Freight House, Weston Depot, and a preserved railway turntable',
+    osmNames:['Mass Central Rail Trail'],
     parking:[
       { name:'Wayland Depot, 1 Cochituate Rd, Wayland', lat:42.3643111, lng:-71.3617904 },
       { name:'Church St lot, Weston',                   lat:42.3699762, lng:-71.2957270 },
     ] },
   { id:'n99',  name:'Mass Central RT — Waltham Segment',        state:'MA',  miles:3.0,  distMi:12, surface:'Paved',         lat:42.383, lng:-71.245, url:'https://www.masscentralrailtrail.org/waltham',                                   desc:'Paved urban segment through Waltham with a restored 1880s lattice-truss railroad bridge',
+    osmNames:['Mass Central Rail Trail', 'Mass Central Rail Trail -- Wayside', 'Waltham Wayside Trail'],
     parking:[
       { name:'51 Church St lot, Waltham', lat:42.3775466, lng:-71.2344848 },
     ] },
   { id:'n100', name:'Mass Central RT — Sudbury-Hudson Segment', state:'MA',  miles:7.6,  distMi:15, surface:'Paved',         lat:42.383, lng:-71.530, url:'https://www.masscentralrailtrail.org/current-mcrt-projects',                      desc:'Newly built paved segment through Sudbury, Marlborough, Stow & Hudson past the former South Sudbury rail crossing',
+    osmNames:['Mass Central Rail Trail'],
     parking:[
       { name:'Union Ave lot near old Sudbury Depot, South Sudbury', lat:42.3611357, lng:-71.4221364 },
       { name:'Wilkins St lot, Hudson', lat:42.3947308, lng:-71.5378745 },
     ] },
   { id:'n101', name:'Mass Central RT — Rutland-Holden Segment', state:'MA',  miles:4,    distMi:40, surface:'Stone dust',    lat:42.380, lng:-71.950, url:'https://www.wachusettgreenways.org/wordpress/',                                    desc:'Wachusett Greenways stone-dust segment continuing toward Holden and West Boylston, with a few short on-road detours',
+    osmNames:['Mass Central Rail Trail'],
     parking:[
       { name:'River St lot, Holden', lat:42.3744591, lng:-71.8244204 },
     ] },
   { id:'n102', name:'Mass Central RT — Barre-Rutland Segment',  state:'MA',  miles:8.8,  distMi:45, surface:'Stone dust',    lat:42.401, lng:-72.020, url:'https://www.wachusettgreenways.org/wordpress/',                                    desc:'Wachusett Greenways stone-dust trail through rural woodlands featuring the Charnock Hill and Pommogussett tunnels',
+    osmNames:['Mass Central Rail Trail'],
     parking:[
       { name:'Wachusett St lot, Holden', lat:42.3773781, lng:-71.8509899 },
     ] },
   { id:'n103', name:'Mass Central RT — New Braintree & Hardwick', state:'MA', miles:3.2, distMi:55, surface:'Stone dust/Gravel', lat:42.318, lng:-72.150, url:'https://eqlt.org/our-properties/mass-central-rail-trail-new-braintree-and-hardwick/', desc:'East Quabbin Land Trust-maintained segment crossing the Ware River twice via lattice and pony truss bridges',
+    osmNames:['Mass Central Rail Trail'],
     parking:[
       { name:'Former New Braintree Depot, Hardwick Rd & West Rd', lat:42.3166391, lng:-72.1265444 },
     ] },
   { id:'n104', name:'Mass Central RT — Ware River Valley',      state:'MA',  miles:5,    distMi:58, surface:'Stone dust/Paved', lat:42.263, lng:-72.240, url:'https://bikeitorhikeit.org/mass_central_rail_trail_ware_river_valley_branch.htm',   desc:'Small-town trail through Ware along the Ware River, with a paved connector into Grenville Park',
+    osmNames:['Mass Central Rail Trail', 'Massassachusetts Central Rail Trail'],
     parking:[
       { name:'Church St lot, Ware', lat:42.2644029, lng:-72.2359918 },
     ] },
   { id:'n105', name:'Mass Central RT — Belchertown Greenway',   state:'MA',  miles:3.9,  distMi:80, surface:'Unimproved',    lat:42.275, lng:-72.400, url:'https://www.masscentralrailtrail.org/belchertown',                                desc:'Rustic unpaved corridor near the historic Jabish Brook trestle bridge, popular with equestrians, hikers & mountain bikers',
+    osmNames:['Mass Central Rail Trail'],
     parking:[
       { name:'Warren Wright Rd trailhead, Belchertown', lat:42.3330006, lng:-72.4658370 },
       { name:'Depot St lot, Belchertown', lat:42.2135822, lng:-72.3469239 },
@@ -1079,6 +1039,7 @@ const NEARBY_TRAILS = [
       { name:'River Bend Farm Visitor Center, 287 Oak St, Uxbridge',             lat:42.0938856, lng:-71.6238340 },
     ] },
   { id:'n14', name:'Mason-Greenville Rail Trail',            state:'NH',    miles:9.1,  distMi:28, surface:'Gravel',        lat:42.748, lng:-71.755, url:'https://www.traillink.com/trail/mason-railroad-trail/',                           desc:'Mason to Greenville NH through quiet rural southern NH',
+    osmNames:['Mason Railroad Trail', 'Greenville Recreational Rail Trail'],
     parking:[
       { name:'Pratt Pond Rd lot, Greenville', lat:42.7784938, lng:-71.7697014 },
       { name:'Depot Rd lot, Mason', lat:42.7353857, lng:-71.7555673 },
@@ -1133,6 +1094,7 @@ const NEARBY_TRAILS = [
       { name:'Monroe St lot, Abington', lat:42.1245297, lng:-70.9390390 },
     ] },
   { id:'n17', name:'Rockingham Rail Trail (Fremont Branch)', state:'NH',    miles:18,   distMi:35, surface:'Gravel',        lat:42.930, lng:-71.175, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/rockingham-recreational-rail-trail,-fremont-branch', desc:'Windham to Epping NH along a southern NH rail corridor',
+    osmNames:['Rockingham Recreational Trail Fremont Branch'],
     parking:[
       { name:'Ballpark lot off Rt 107, Fremont', lat:42.9909194, lng:-71.1425606 },
       { name:'Trailhead near Rt 27, Epping', lat:43.0471211, lng:-71.0758436 },
@@ -1143,6 +1105,7 @@ const NEARBY_TRAILS = [
       { name:'Rivers Edge Recreation Complex, Woonsocket', lat:42.0028761, lng:-71.5147839 },
     ] },
   { id:'n19', name:'Rockingham Recreational Trail',          state:'NH',    miles:26,   distMi:37, surface:'Gravel',        lat:43.002, lng:-71.253, url:'https://www.traillink.com/trail/rockingham-recreational-trail/',                  desc:'Manchester to Fremont through Derry & Sandown, NH',
+    osmNames:['Rockingham Recreational Rail Trail'],
     parking:[
       { name:'Warner Hill Rd lot, Derry', lat:42.8833334, lng:-71.2610748 },
       { name:'Sandown Depot Museum lot, Sandown', lat:42.9290632, lng:-71.1862120 },
@@ -1217,6 +1180,7 @@ const NEARBY_TRAILS = [
       { name:'Hopkinton Dam, West Hopkinton', lat:43.1885532, lng:-71.7474782 },
     ] },
   { id:'n31', name:'Hillsborough Rail Trail',                 state:'NH',   miles:8,    distMi:54, surface:'Gravel',        lat:43.113, lng:-71.906, url:'https://www.nhstateparks.org/find-parks-trails/recreational-rail-trails/hillsborough-recreational-rail-trail', desc:'Hillsborough NH — rolling countryside in central NH',
+    osmNames:['Hillsborough Recreational Rail Trail'],
     parking:[
       { name:'Fish and Game Rd lot, Deering/Hillsborough', lat:43.0929705, lng:-71.9117006 },
     ] },
@@ -1679,7 +1643,7 @@ function buildNearbyPopup(n) {
       ${n.state} · ${n.miles} mi · ${n.distMi} mi from Concord<br>
       ${n.surface}
       ${ridden ? '<br><span style="color:var(--green);font-weight:700">✅ Ridden</span>' : ''}
-      ${ignored ? '<br><span style="color:var(--muted);font-weight:700">🙈 Ignored — see Queue tab</span>' : ''}
+      ${ignored ? '<br><span style="color:var(--muted);font-weight:700">🙈 Ignored — excluded from auto-fetch</span>' : ''}
     </div>
     <div class="lf-popup-links">
       <a href="${n.url}" target="_blank" rel="noopener">TrailLink ↗</a>
@@ -1697,7 +1661,7 @@ function buildNearbyPopup(n) {
 async function forceLoadTrailLine(nearbyId) {
   const n = NEARBY_TRAILS.find(x => x.id === nearbyId);
   if (!n) return;
-  if (ignoredTrailIds.has(nearbyId)) { alert(`${n.name} is marked ignored — un-ignore it from the Queue tab first.`); return; }
+  if (ignoredTrailIds.has(nearbyId)) { alert(`${n.name} is marked ignored.`); return; }
   const btn = document.getElementById(`loadline-${nearbyId}`);
   if (btn) { btn.textContent = 'Loading…'; btn.disabled = true; }
   attemptedDirectFetch.delete(nearbyId);
@@ -1705,11 +1669,10 @@ async function forceLoadTrailLine(nearbyId) {
   refreshNearbyMarkers();
   if (!pts) {
     nearbyMarkers[nearbyId]?.openPopup();
-    // Rate-limiting is explained inline in the Queue tab's banner instead of
-    // an interrupting alert — this is common under normal background load
-    // and doesn't need a popup every time it happens.
+    // A rate-limited attempt is common and not worth interrupting with a
+    // popup — only a genuine not-found gets one.
     if (!lastDirectFetchWasRateLimited) {
-      alert(`Couldn't find a matching trail path in the map data for ${n.name}. You can try again later.`);
+      alert(`Couldn't find a matching trail path in the map data for ${n.name}. Use "📋 Investigate" on its Nearby card to have Claude look into it.`);
     }
   }
 }
@@ -1851,8 +1814,7 @@ async function fetchAllNearbyTrailLines() {
   for (const n of NEARBY_TRAILS) {
     if (TRAIL_POLYLINES?.[n.id]?.length > 0) continue;
     if (ignoredTrailIds.has(n.id)) continue;
-    if (autoRetryExhausted(n.id)) continue; // genuinely not-found MAX_AUTO_RETRIES times — needs a manual Retry or Ignore now
-    await waitWhilePaused();
+    if (autoRetryExhausted(n.id)) continue; // genuinely not-found MAX_AUTO_RETRIES times — needs manual investigation, see "📋 Investigate" on its card
     await fetchTrailPolylineDirect(n);
     refreshNearbyMarkers();
     // Dev-only pacing (see BACKGROUND_FETCH_PACE_MS) — a no-op in production.
@@ -2039,6 +2001,7 @@ function renderNearby() {
             Map
           </a>
           ${parkingLinksHtml(n, 'link-btn')}
+          ${!(TRAIL_POLYLINES?.[n.id]?.length > 0) ? `<button class="link-btn" id="investigate-${n.id}" title="No trail path found — copy a prompt for Claude to investigate why" onclick="copyTrailInvestigatePrompt('${n.id}')">📋 Investigate</button>` : ''}
           ${!ridden ? `<button class="log-btn" onclick="openModalFromNearby('${n.id}')">+ Log Ride</button>` : ''}
         </div>
       </div>`;
@@ -2329,7 +2292,7 @@ const fetchedBboxKeys = new Set();
 // distance sanity checks, an osmNames alias). Cached entries stamped with an
 // older version are treated as stale and silently re-fetched — no manual
 // cache-clearing needed on deploy.
-const TRAIL_GEOM_LOGIC_VERSION = 5; // v5: replaced fuzzy keyword-overlap name scoring with exact-name-only matching — fuzzy scoring caused real contamination (e.g. "River Trail" in Carlisle merged into n03 Assabet River Rail Trail, "Northern Avenue" in Seaport merged into n04 Northern Strand Community Trail)
+const TRAIL_GEOM_LOGIC_VERSION = 6; // v6: added osmNames aliases for n02/n98-n105/n14/n17/n19/n31 (real OSM names differ from declared trail names, discovered after switching to exact-only matching)
 
 // Load every trail's previously-cached geometry from the server in one request.
 // Entries cached under an older matching-logic version are skipped (left
@@ -2344,7 +2307,6 @@ async function loadTrailGeometryCache() {
     for (const [id, entry] of Object.entries(data)) {
       if (entry && entry.version === TRAIL_GEOM_LOGIC_VERSION && Array.isArray(entry.segments)) {
         TRAIL_POLYLINES[id] = entry.segments;
-        setTrailFetchStatus(id, 'success', { fromCache: true });
       }
       // else: stale (old/legacy format, or older logic version) — left
       // uncached, so fetchAllNearbyTrailLines/fetchTrailPolylineDirect will
@@ -2526,24 +2488,12 @@ const attemptedDirectFetch = new Set();
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// ─── Queue pause control ────────────────────────────────────────────────────
-// Pauses the automated multi-trail loops (the background page-load sweep and
-// "Retry all failed") — not a persisted setting, and doesn't affect a single
-// deliberate "Retry" click on one trail, which always runs regardless.
-let queuePaused = false;
-
-async function waitWhilePaused() {
-  while (queuePaused) await sleep(300);
-}
-
-function toggleQueuePause() {
-  queuePaused = !queuePaused;
-  if (document.getElementById('tab-queue')?.classList.contains('active')) renderQueuePanel();
-}
-
 // ─── Ignored trails — permanently skipped by the fetch queue ──────────────────
 // Persisted server-side (shared across sessions/users) so a trail marked
 // "ignored" stays ignored after a reload, not just for this browser tab.
+// No in-app UI to toggle this anymore (see "Trail geometry cache" in
+// CLAUDE.md — Overpass fetching is now a dev-side tool, not a live queue the
+// user manages) — set directly via POST /api/ignored-trails when needed.
 let ignoredTrailIds = new Set();
 
 async function loadIgnoredTrails() {
@@ -2555,36 +2505,12 @@ async function loadIgnoredTrails() {
   } catch (e) { console.warn('Could not load ignored trails:', e.message); }
 }
 
-async function persistIgnoredTrails() {
-  try {
-    await fetch('/api/ignored-trails', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify([...ignoredTrailIds]),
-    });
-  } catch (e) { console.warn('Could not persist ignored trails:', e.message); }
-}
-
-function ignoreTrail(id) {
-  ignoredTrailIds.add(id);
-  persistIgnoredTrails();
-  if (document.getElementById('tab-queue')?.classList.contains('active')) renderQueuePanel();
-  updateQueueBadge();
-}
-
-function unignoreTrail(id) {
-  ignoredTrailIds.delete(id);
-  persistIgnoredTrails();
-  if (document.getElementById('tab-queue')?.classList.contains('active')) renderQueuePanel();
-  updateQueueBadge();
-}
-
 // ─── Not-found retry cap ────────────────────────────────────────────────────
 // Persisted server-side (shared across sessions) so a trail that genuinely
 // has no matching OSM data doesn't get re-queried on every single page load
 // forever — after MAX_AUTO_RETRIES consecutive not-found results, the
-// background loop and "Retry all" stop touching it automatically. A single
-// manual "Retry" click always still works and resets the count.
+// background loop stops touching it automatically until its geometry is
+// fixed and re-seeded (see "📋 Investigate" on its Nearby card).
 // { [trailId]: { count, lastFailedAt } } — rate-limited failures don't count,
 // since those aren't the trail's fault.
 const MAX_AUTO_RETRIES = 3;
@@ -2621,20 +2547,6 @@ function recordTrailFetchOutcome(id, succeeded) {
 
 function autoRetryExhausted(id) {
   return (trailFailureCounts[id]?.count || 0) >= MAX_AUTO_RETRIES;
-}
-
-// ─── Trail geometry fetch-queue status (for the "Queue" tab) ──────────────────
-// trailId → { status: 'fetching'|'success'|'rate-limited'|'not-found', updatedAt, fromCache }
-// Anything not in this map and not yet in TRAIL_POLYLINES is implicitly 'pending'.
-// Ignored trails always report 'ignored' regardless of any prior fetch status.
-// Session-scoped only (like TRAIL_POLYLINES/attemptedDirectFetch) — this is a
-// live view of this page load's background work, not something to persist.
-const trailFetchStatus = {};
-
-function setTrailFetchStatus(id, status, extra) {
-  trailFetchStatus[id] = { status, updatedAt: Date.now(), ...extra };
-  updateQueueBadge();
-  if (document.getElementById('tab-queue')?.classList.contains('active')) renderQueuePanel();
 }
 
 // Returns { segments, rateLimited } — rateLimited is true specifically on an
@@ -2717,16 +2629,13 @@ async function fetchTrailPolylineDirect(trail) {
   if (attemptedDirectFetch.has(trail.id)) return null;
   if (!trail.lat || !trail.lng) { attemptedDirectFetch.add(trail.id); return null; }
 
-  setTrailFetchStatus(trail.id, 'fetching');
   let attempt = await fetchTrailPolylineDirectAttempt(trail);
   if (!attempt.segments) {
-    setTrailFetchStatus(trail.id, attempt.rateLimited ? 'rate-limited' : 'not-found'); // interim, while we retry
     await sleep(attempt.rateLimited ? 6000 : 1500);
     attempt = await fetchTrailPolylineDirectAttempt(trail);
   }
   const result = attempt.segments;
   lastDirectFetchWasRateLimited = !result && attempt.rateLimited;
-  setTrailFetchStatus(trail.id, result ? 'success' : (attempt.rateLimited ? 'rate-limited' : 'not-found'));
   // Only a genuine not-found counts against the auto-retry cap — rate-limiting
   // isn't the trail's fault, so it shouldn't push it toward exhausted.
   if (!attempt.rateLimited) recordTrailFetchOutcome(trail.id, !!result);
@@ -3509,179 +3418,29 @@ async function deleteTrail(id) {
 function switchTab(name) {
   document.getElementById('tab-rides').classList.toggle('active', name==='rides');
   document.getElementById('tab-nearby').classList.toggle('active', name==='nearby');
-  document.getElementById('tab-queue').classList.toggle('active', name==='queue');
   document.getElementById('panel-rides').classList.toggle('active', name==='rides');
   document.getElementById('panel-nearby').classList.toggle('active', name==='nearby');
-  document.getElementById('panel-queue').classList.toggle('active', name==='queue');
-  if (name === 'queue') renderQueuePanel();
 }
 
-// ─── Queue tab ──────────────────────────────────────────────────────────────
-function getTrailQueueStatus(id) {
-  if (ignoredTrailIds.has(id)) return 'ignored';
-  const entry = trailFetchStatus[id];
-  if (entry) return entry.status;
-  if (TRAIL_POLYLINES?.[id]?.length > 0) return 'success';
-  // A trail that already exhausted its auto-retry cap in a past session gets
-  // skipped by the background loop before it ever sets a live status, which
-  // would otherwise leave it stuck showing "pending" (implying it's still
-  // waiting its turn) forever instead of surfacing as a real not-found.
-  if (autoRetryExhausted(id)) return 'not-found';
-  return 'pending';
+// ─── Per-trail geometry investigation prompt ───────────────────────────────
+// Trail geometry is now committed static data (see "Trail geometry cache" in
+// CLAUDE.md) rather than something the live app manages via a background
+// queue — Overpass is a tool used during development, not a runtime
+// dependency. This builds a ready-to-paste Claude Code prompt for a single
+// trail so investigating/fixing its geometry (missing, stale, or just worth
+// re-verifying) doesn't require manually looking up its details by hand.
+function buildTrailInvestigatePrompt(n) {
+  const aliases = n.osmNames?.length ? `, osmNames: [${n.osmNames.map(a => `"${a}"`).join(', ')}]` : '';
+  return `The Rail Trail Tracker app (see CLAUDE.md) can't find OSM trail geometry for this trail via the Overpass query in fetchTrailPolylineDirectAttempt() in public/index.html. Please investigate why — check whether the trail exists in OpenStreetMap under a different name (add it to its osmNames array), whether its declared lat/lng is far from its real-world path (the search bbox is centered on lat/lng), or whether it just isn't mapped in OSM yet. Then fix what you can, and once you have clean verified geometry, commit it into trail-geometry-seed/${n.id}.json (bump its version to match TRAIL_GEOM_LOGIC_VERSION) so it doesn't depend on Overpass at runtime.
+
+- "${n.name}" (id: ${n.id}, lat/lng: ${n.lat}, ${n.lng}${aliases}) — ${n.url}`;
 }
 
-function updateQueueBadge() {
-  const badge = document.getElementById('queue-badge');
-  if (!badge) return;
-  const left = NEARBY_TRAILS.filter(n => {
-    const s = getTrailQueueStatus(n.id);
-    return s === 'pending' || s === 'fetching';
-  }).length;
-  badge.textContent = left > 0 ? `(${left})` : '';
-}
-
-// Fetches Overpass's own /api/status (plain text, e.g. "Rate limit: 2\nSlot
-// available after: 2026-01-01T00:00:05Z, in 5 seconds.\n...") and parses out
-// how many concurrent slots this IP gets and how many are free right now —
-// real numbers instead of a generic "it's rate-limiting" message. Cached
-// briefly so re-rendering the Queue tab repeatedly (it re-renders on every
-// status change) doesn't hammer this endpoint too.
-let overpassStatusCache = null;
-let overpassStatusFetchedAt = 0;
-const OVERPASS_STATUS_TTL_MS = 5000;
-
-async function fetchOverpassStatus() {
-  if (overpassStatusCache && Date.now() - overpassStatusFetchedAt < OVERPASS_STATUS_TTL_MS) {
-    return overpassStatusCache;
-  }
-  try {
-    const resp = await fetch('https://overpass-api.de/api/status');
-    if (!resp.ok) return null;
-    const text = await resp.text();
-    const limitMatch = text.match(/Rate limit:\s*(\d+)/);
-    const availableNowMatch = text.match(/(\d+) slots? available now\./);
-    const slotTimes = [...text.matchAll(/Slot available after:.*?in (-?\d+) seconds?\./g)].map(m => parseInt(m[1], 10));
-    const slotsTotal = limitMatch ? parseInt(limitMatch[1], 10) : null;
-    const slotsFreeNow = availableNowMatch ? parseInt(availableNowMatch[1], 10) : slotTimes.filter(s => s <= 0).length;
-    const nextSlotInSeconds = slotTimes.length ? Math.max(0, Math.min(...slotTimes)) : null;
-    const result = { slotsTotal, slotsFreeNow, nextSlotInSeconds };
-    overpassStatusCache = result;
-    overpassStatusFetchedAt = Date.now();
-    return result;
-  } catch (e) {
-    console.debug('Could not fetch Overpass status:', e.message);
-    return null;
-  }
-}
-
-// Fills in the live slot-availability detail after renderQueuePanel() has
-// already painted a placeholder — keeps the panel from blocking on a network
-// round-trip, and no-ops harmlessly if the user has since left the tab.
-async function updateRateLimitBannerDetail() {
-  const span = document.getElementById('queue-rate-limit-detail');
-  if (!span) return;
-  const status = await fetchOverpassStatus();
-  const span2 = document.getElementById('queue-rate-limit-detail'); // re-check: tab may have re-rendered mid-fetch
-  if (!span2) return;
-  if (!status || status.slotsTotal == null) {
-    span2.textContent = 'Live status unavailable right now.';
-    return;
-  }
-  const { slotsTotal, slotsFreeNow, nextSlotInSeconds } = status;
-  span2.textContent = slotsFreeNow > 0
-    ? `${slotsFreeNow} of ${slotsTotal} request slots free right now — a Retry should go through immediately.`
-    : (nextSlotInSeconds != null
-      ? `0 of ${slotsTotal} request slots free — next one opens up in about ${nextSlotInSeconds}s.`
-      : `0 of ${slotsTotal} request slots free right now.`);
-}
-
-function renderQueuePanel() {
-  const el = document.getElementById('queue-content');
-  if (!el) return;
-
-  const buckets = { pending: [], fetching: [], success: [], 'rate-limited': [], 'not-found': [], ignored: [] };
-  NEARBY_TRAILS.forEach(n => buckets[getTrailQueueStatus(n.id)].push(n));
-
-  const summary = `
-    <div class="queue-summary">
-      <div class="queue-stat"><span class="queue-stat-num">${buckets.success.length}</span>loaded</div>
-      <div class="queue-stat"><span class="queue-stat-num">${buckets.pending.length + buckets.fetching.length}</span>waiting</div>
-      <div class="queue-stat queue-stat-warn"><span class="queue-stat-num">${buckets['rate-limited'].length}</span>rate-limited</div>
-      <div class="queue-stat queue-stat-err"><span class="queue-stat-num">${buckets['not-found'].length}</span>not found</div>
-      <div class="queue-stat"><span class="queue-stat-num">${buckets.ignored.length}</span>ignored</div>
-    </div>`;
-
-  const pauseBtn = `<button class="queue-pause-btn ${queuePaused ? 'is-paused' : ''}" onclick="toggleQueuePause()">${queuePaused ? '▶️ Resume queue' : '⏸️ Pause queue'}</button>`;
-  const pauseNote = queuePaused
-    ? `<div class="queue-paused-note">⏸️ Queue paused — background fetching and "Retry all" are on hold. A single "Retry" click still works.</div>`
-    : '';
-  // Explains rate-limiting/backoff behavior inline instead of interrupting
-  // with an alert() popup every time a fetch (background or manual) hits a
-  // 429. Each fetch already retries once internally after a short built-in
-  // wait — a trail landing here means that single retry also got rate-limited,
-  // so nothing further happens automatically until a manual Retry (or the
-  // trail's next page-load attempt). The detail span is filled in
-  // asynchronously by updateRateLimitBannerDetail() right after this render,
-  // with live slot counts from Overpass's own /api/status.
-  const rateLimitNote = buckets['rate-limited'].length > 0
-    ? `<div class="queue-paused-note">🚫 The map data service (Overpass) rate-limited these trails — each already retried once automatically and is now waiting on a manual Retry (or the next page reload) rather than continuing to retry on its own.<br><span id="queue-rate-limit-detail">Checking live Overpass status…</span></div>`
-    : '';
-
-  const trailLink = n => n.url ? `<a href="${n.url}" target="_blank" rel="noopener" class="queue-row-link" title="Research this trail">🔗</a>` : '';
-
-  const section = (title, list, { showRetry, showIgnore, showUnignore, showCopyPrompt, showLastAttempt } = {}) => {
-    if (!list.length) return '';
-    const rows = list.map(n => {
-      const exhausted = showRetry && autoRetryExhausted(n.id);
-      const lastAttempt = showLastAttempt && trailFetchStatus[n.id]?.updatedAt
-        ? ` <span class="queue-exhausted-note" title="When this trail's last fetch attempt was rate-limited">· ${Math.max(0, Math.round((Date.now() - trailFetchStatus[n.id].updatedAt) / 1000))}s ago</span>`
-        : '';
-      return `
-      <div class="queue-row">
-        <span class="queue-row-name">${escHtml(n.name)}${exhausted ? ' <span class="queue-exhausted-note" title="Failed ' + MAX_AUTO_RETRIES + '+ times — auto-retry stopped, Retry still works manually">⏹ auto-retry stopped</span>' : ''}${lastAttempt}</span>
-        ${trailLink(n)}
-        ${showRetry ? `<button class="icon-btn" onclick="forceLoadTrailLine('${n.id}')">Retry</button>` : ''}
-        ${showIgnore ? `<button class="icon-btn" onclick="ignoreTrail('${n.id}')" title="Stop retrying this trail">Ignore</button>` : ''}
-        ${showUnignore ? `<button class="icon-btn" onclick="unignoreTrail('${n.id}')">Un-ignore</button>` : ''}
-      </div>`;
-    }).join('');
-    const copyBtn = showCopyPrompt
-      ? `<button class="icon-btn queue-copy-prompt-btn" id="copy-not-found-btn" onclick="copyNotFoundPrompt()">📋 Copy investigation prompt</button>`
-      : '';
-    return `<div class="queue-section"><div class="queue-section-title">${title}${copyBtn}</div>${rows}</div>`;
-  };
-
-  el.innerHTML = pauseBtn + pauseNote + rateLimitNote + summary +
-    section('🔄 Fetching now', buckets.fetching, {}) +
-    section('🚫 Rate-limited — retry now or wait for the next page load', buckets['rate-limited'], { showRetry: true, showIgnore: true, showLastAttempt: true }) +
-    section('❓ Not found — worth investigating', buckets['not-found'], { showRetry: true, showIgnore: true, showCopyPrompt: buckets['not-found'].length > 0 }) +
-    section(`🙈 Ignored (${buckets.ignored.length})`, buckets.ignored, { showUnignore: true }) +
-    section(`⏳ Waiting in queue (${buckets.pending.length})`, buckets.pending, { showIgnore: true });
-
-  updateQueueBadge();
-  if (buckets['rate-limited'].length > 0) updateRateLimitBannerDetail();
-}
-
-// Builds a ready-to-paste Claude Code prompt describing every currently
-// "not found" trail (name, id, coords, and any osmNames aliases already
-// configured) so investigating a batch of failures doesn't require manually
-// looking up each trail's details by hand.
-function buildNotFoundPrompt() {
-  const notFound = NEARBY_TRAILS.filter(n => getTrailQueueStatus(n.id) === 'not-found');
-  if (!notFound.length) return '';
-  const lines = notFound.map(n => {
-    const aliases = n.osmNames?.length ? `, osmNames: [${n.osmNames.map(a => `"${a}"`).join(', ')}]` : '';
-    return `- "${n.name}" (id: ${n.id}, lat/lng: ${n.lat}, ${n.lng}${aliases}) — ${n.url}`;
-  }).join('\n');
-  return `The Rail Trail Tracker app (see CLAUDE.md) can't find OSM trail geometry for these trails via the Overpass query in fetchTrailPolylineDirectAttempt() in public/index.html. For each one, please investigate why — check whether the trail exists in OpenStreetMap under a different name (add it to that trail's osmNames array), whether its declared lat/lng is far from its real-world path (the search bbox is centered on lat/lng), or whether it just isn't mapped in OSM yet. Then fix what you can.
-
-${lines}`;
-}
-
-async function copyNotFoundPrompt() {
-  const prompt = buildNotFoundPrompt();
-  if (!prompt) return;
-  const btn = document.getElementById('copy-not-found-btn');
+async function copyTrailInvestigatePrompt(id) {
+  const n = NEARBY_TRAILS.find(x => x.id === id);
+  if (!n) return;
+  const prompt = buildTrailInvestigatePrompt(n);
+  const btn = document.getElementById(`investigate-${id}`);
   try {
     await navigator.clipboard.writeText(prompt);
     if (btn) { const orig = btn.textContent; btn.textContent = '✅ Copied!'; setTimeout(() => { btn.textContent = orig; }, 1500); }
