@@ -4,3 +4,5 @@ node_modules/
 .claude/settings.json
 .claude/settings.local.json
 /data/
+/.scratch/
+/trail-geometry-seed/

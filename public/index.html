@@ -926,7 +926,24 @@ const NEARBY_TRAILS = [
   { id:'n05', name:'Tri-Community Greenway',                 state:'MA',    miles:6.5,  distMi:15, surface:'Paved',         lat:42.476, lng:-71.133, url:'https://www.traillink.com/trail/tri-community-greenway/',                          desc:'Stoneham to Woburn through Winchester',
     parking:[
       { name:'Gould St lot, Stoneham', lat:42.4803978, lng:-71.0939115 },
+      { name:'Lake Ave lot, Woburn', lat:42.4645989, lng:-71.1527457 },
       { name:'Wedgemere Station, 25 Mystic Valley Pkwy, Winchester', lat:42.4445699, lng:-71.1403163 },
+    ],
+    // Full set of real trailhead lots found via TrailLink's own map (11 total)
+    // — not all displayed (see `parking` above for the curated start/middle/end
+    // subset shown in the UI), kept here as sourced data for future curation.
+    parkingCandidates:[
+      { name:'Mystic Valley Parkway, Winchester', lat:42.444525, lng:-71.140797 },
+      { name:'Tri-Community Greenway, Winchester', lat:42.451081, lng:-71.137027 },
+      { name:'Waterfield Road, Winchester', lat:42.451095, lng:-71.137153 },
+      { name:'Mount Vernon Street, Winchester', lat:42.453587, lng:-71.134423 },
+      { name:'Lake Avenue, Woburn', lat:42.464676, lng:-71.152825 },
+      { name:'Central Street, Woburn', lat:42.476703, lng:-71.124825 },
+      { name:'Dale Court, Stoneham', lat:42.478426, lng:-71.095117 },
+      { name:'Pine Street, Stoneham', lat:42.480261, lng:-71.097703 },
+      { name:'Tri-Community Greenway, Stoneham', lat:42.480819, lng:-71.095293 },
+      { name:'Tri-Community Greenway, Stoneham', lat:42.483810, lng:-71.095136 },
+      { name:'Tri-Community Greenway, Stoneham', lat:42.485998, lng:-71.100706 },
     ] },
   { id:'n06', name:'Wakefield-Lynnfield Rail Trail',         state:'MA',    miles:5,    distMi:15, surface:'Paved',         lat:42.510, lng:-71.062, url:'https://www.traillink.com/trail/wakefield-lynnfield-rail-trail/',                   desc:'Wakefield to Lynnfield along a former railroad corridor' },
   { id:'n61', name:'Cochituate Rail Trail',                  state:'MA',    miles:4.5,  distMi:15, surface:'Paved',         lat:42.295, lng:-71.362, url:'https://www.traillink.com/trail/cochituate-rail-trail/',                          desc:'Natick to Framingham through Saxonville along the former Old Colony Railroad',
@@ -1636,7 +1653,6 @@ function parkingRowsHtml(n) {
 function buildNearbyPopup(n) {
   const ridden = riddenForNearby(n.id);
   const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${n.lat},${n.lng}`;
-  const hasLine = !!TRAIL_POLYLINES?.[n.id]?.length;
   const ignored = ignoredTrailIds.has(n.id);
   return `<div class="lf-popup-name">${escHtml(n.name)}</div>
     <div class="lf-popup-meta">
@@ -1650,7 +1666,7 @@ function buildNearbyPopup(n) {
       <a href="${gmapsUrl}" target="_blank" rel="noopener">Maps ↗</a>
     </div>
     ${parkingRowsHtml(n)}
-    ${!hasLine && !ignored ? `<button class="lf-popup-log" id="investigate-popup-${n.id}" title="No trail path found — copy a prompt for Claude to investigate why" onclick="copyTrailInvestigatePrompt('${n.id}')">📋 Investigate</button>` : ''}
+    ${!ignored ? `<button class="lf-popup-log" id="investigate-popup-${n.id}" title="Copy a prompt for Claude to investigate/improve this trail's mapped path" onclick="copyTrailInvestigatePrompt('${n.id}')">📋 Investigate</button>` : ''}
     ${!ridden ? `<button class="lf-popup-log" onclick="logRideFromNearby('${n.id}')">+ Log a Ride</button>` : ''}`;
 }
 
@@ -1962,7 +1978,7 @@ function renderNearby() {
             Map
           </a>
           ${parkingLinksHtml(n, 'link-btn')}
-          ${!(TRAIL_POLYLINES?.[n.id]?.length > 0) ? `<button class="link-btn" id="investigate-${n.id}" title="No trail path found — copy a prompt for Claude to investigate why" onclick="copyTrailInvestigatePrompt('${n.id}')">📋 Investigate</button>` : ''}
+          <button class="link-btn" id="investigate-${n.id}" title="Copy a prompt for Claude to investigate/improve this trail's mapped path" onclick="copyTrailInvestigatePrompt('${n.id}')">📋 Investigate</button>
           ${!ridden ? `<button class="log-btn" onclick="openModalFromNearby('${n.id}')">+ Log Ride</button>` : ''}
         </div>
       </div>`;
@@ -3373,7 +3389,16 @@ function switchTab(name) {
 // re-verifying) doesn't require manually looking up its details by hand.
 function buildTrailInvestigatePrompt(n) {
   const aliases = n.osmNames?.length ? `, osmNames: [${n.osmNames.map(a => `"${a}"`).join(', ')}]` : '';
-  return `The Rail Trail Tracker app (see CLAUDE.md) can't find OSM trail geometry for this trail via the Overpass query in fetchTrailPolylineDirectAttempt() in public/index.html. Please investigate why — check whether the trail exists in OpenStreetMap under a different name (add it to its osmNames array), whether its declared lat/lng is far from its real-world path (the search bbox is centered on lat/lng), or whether it just isn't mapped in OSM yet. Then fix what you can, and once you have clean verified geometry, commit it into trail-geometry-seed/${n.id}.json (bump its version to match TRAIL_GEOM_LOGIC_VERSION) so it doesn't depend on Overpass at runtime.
+  const segs = TRAIL_POLYLINES?.[n.id]?.length || 0;
+  const pts = segs ? TRAIL_POLYLINES[n.id].reduce((s, seg) => s + seg.length, 0) : 0;
+  const currentState = segs
+    ? `It currently has cached geometry (${segs} segments, ${pts} points total) — check whether that's a clean, mostly-continuous trace, or fragmented/incomplete (e.g. many short disconnected segments) worth improving.`
+    : `It currently has no cached geometry at all.`;
+  return `The Rail Trail Tracker app (see CLAUDE.md) tracks this trail's real-world path via cached geometry stored only in the runtime data volume (never committed to git — see "Trail geometry cache" in CLAUDE.md). ${currentState} Please investigate and improve it if you can:
+- Check whether the trail exists in OpenStreetMap under a different name (add it to its osmNames array) or with its real path chopped into many disconnected named ways.
+- Check whether its declared lat/lng is far from its real-world path (the Overpass search bbox is centered on lat/lng).
+- Prefer TrailLink's own trail map (${n.url}) as the primary source when available — it usually renders as one clean continuous line even where OSM/Overpass has the same trail fragmented. See the "TrailLink-sourced geometry" section of CLAUDE.md for how to pull it.
+Once you have clean, verified geometry, POST it directly to /api/trail-geometry/${n.id} on both local dev and the NAS (http://ugreen.local:3000/api/trail-geometry/${n.id}) — never commit it to the repo, whether it came from OSM/Overpass or TrailLink.
 
 - "${n.name}" (id: ${n.id}, lat/lng: ${n.lat}, ${n.lng}${aliases}) — ${n.url}`;
 }
@@ -3411,14 +3436,14 @@ function fmtDate(iso) {
   // Migrate any old data that had status='wishlist'
   trails = trails.filter(t => !t.status || t.status === 'ridden');
   trails.forEach(t => { delete t.status; });
-  await Promise.all([loadTrailGeometryCache(), loadIgnoredTrails(), loadTrailFailureCounts()]); // fast — hydrates trail lines (committed seed + any runtime cache) + ignore list + retry-cap state before first render
+  await Promise.all([loadTrailGeometryCache(), loadIgnoredTrails(), loadTrailFailureCounts()]); // fast — hydrates trail lines from the runtime cache + ignore list + retry-cap state before first render
   render();
   // Parking pins are revealed per-trail on click (see revealParkingForTrail),
   // not rendered eagerly — keeps the map uncluttered until a rider asks for them.
-  // No background Overpass sweep anymore — trail geometry is committed static
-  // data (see trail-geometry-seed/ + CLAUDE.md); a missing line means the
-  // trail hasn't been seeded yet, surfaced via "📋 Investigate" rather than
-  // retried automatically.
+  // No background Overpass sweep anymore — trail geometry lives only in the
+  // runtime data volume, never git (see "Trail geometry cache" in CLAUDE.md);
+  // a missing line means the trail hasn't been seeded yet, surfaced via
+  // "📋 Investigate" rather than retried automatically.
 })();
 </script>
 </body>

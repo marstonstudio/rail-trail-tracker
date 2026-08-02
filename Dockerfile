@@ -12,7 +12,6 @@ RUN npm install --omit=dev
 # Copy app files
 COPY server.js ./
 COPY public ./public
-COPY trail-geometry-seed ./trail-geometry-seed
 
 # Bake build metadata into the image as runtime ENV vars (server.js stamps HTML at startup)
 ARG BUILD_DATE=
