@@ -1643,38 +1643,15 @@ function buildNearbyPopup(n) {
       ${n.state} · ${n.miles} mi · ${n.distMi} mi from Concord<br>
       ${n.surface}
       ${ridden ? '<br><span style="color:var(--green);font-weight:700">✅ Ridden</span>' : ''}
-      ${ignored ? '<br><span style="color:var(--muted);font-weight:700">🙈 Ignored — excluded from auto-fetch</span>' : ''}
+      ${ignored ? '<br><span style="color:var(--muted);font-weight:700">🙈 Ignored — not expected to have a mapped path</span>' : ''}
     </div>
     <div class="lf-popup-links">
       <a href="${n.url}" target="_blank" rel="noopener">TrailLink ↗</a>
       <a href="${gmapsUrl}" target="_blank" rel="noopener">Maps ↗</a>
     </div>
     ${parkingRowsHtml(n)}
-    ${!hasLine && !ignored ? `<button class="lf-popup-log" id="loadline-${n.id}" onclick="forceLoadTrailLine('${n.id}')">🔄 Load trail path</button>` : ''}
+    ${!hasLine && !ignored ? `<button class="lf-popup-log" id="investigate-popup-${n.id}" title="No trail path found — copy a prompt for Claude to investigate why" onclick="copyTrailInvestigatePrompt('${n.id}')">📋 Investigate</button>` : ''}
     ${!ridden ? `<button class="lf-popup-log" onclick="logRideFromNearby('${n.id}')">+ Log a Ride</button>` : ''}`;
-}
-
-// Force-(re)fetch one trail's real geometry, bypassing the "already
-// attempted" guard — called from the "Load trail path" popup button, so a
-// user can retry a trail that failed during the background pass, or jump
-// the queue for one they specifically want to see right now.
-async function forceLoadTrailLine(nearbyId) {
-  const n = NEARBY_TRAILS.find(x => x.id === nearbyId);
-  if (!n) return;
-  if (ignoredTrailIds.has(nearbyId)) { alert(`${n.name} is marked ignored.`); return; }
-  const btn = document.getElementById(`loadline-${nearbyId}`);
-  if (btn) { btn.textContent = 'Loading…'; btn.disabled = true; }
-  attemptedDirectFetch.delete(nearbyId);
-  const pts = await fetchTrailPolylineDirect(n);
-  refreshNearbyMarkers();
-  if (!pts) {
-    nearbyMarkers[nearbyId]?.openPopup();
-    // A rate-limited attempt is common and not worth interrupting with a
-    // popup — only a genuine not-found gets one.
-    if (!lastDirectFetchWasRateLimited) {
-      alert(`Couldn't find a matching trail path in the map data for ${n.name}. Use "📋 Investigate" on its Nearby card to have Claude look into it.`);
-    }
-  }
 }
 
 function riddenForNearby(nearbyId) {
@@ -1804,22 +1781,6 @@ function focusNearby(id) {
     map.setView([n.lat, n.lng], 12, { animate:true });
   }
   marker?.openPopup();
-}
-
-// Progressively fetch each nearby trail's real path in the background (one at
-// a time — Overpass reliably fails/throttles on concurrent requests) so the
-// map can show its actual route as a blue line instead of a placeholder dot.
-// Runs once per page load; already-cached/attempted trails are skipped.
-async function fetchAllNearbyTrailLines() {
-  for (const n of NEARBY_TRAILS) {
-    if (TRAIL_POLYLINES?.[n.id]?.length > 0) continue;
-    if (ignoredTrailIds.has(n.id)) continue;
-    if (autoRetryExhausted(n.id)) continue; // genuinely not-found MAX_AUTO_RETRIES times — needs manual investigation, see "📋 Investigate" on its card
-    await fetchTrailPolylineDirect(n);
-    refreshNearbyMarkers();
-    // Dev-only pacing (see BACKGROUND_FETCH_PACE_MS) — a no-op in production.
-    if (BACKGROUND_FETCH_PACE_MS > 0) await sleep(BACKGROUND_FETCH_PACE_MS);
-  }
 }
 
 // Called from popup button
@@ -2309,8 +2270,7 @@ async function loadTrailGeometryCache() {
         TRAIL_POLYLINES[id] = entry.segments;
       }
       // else: stale (old/legacy format, or older logic version) — left
-      // uncached, so fetchAllNearbyTrailLines/fetchTrailPolylineDirect will
-      // re-fetch and overwrite it with a freshly-versioned entry.
+      // uncached; no automatic re-fetch anymore, see "📋 Investigate".
     }
   } catch (e) { console.warn('Could not load trail geometry cache:', e.message); }
 }
@@ -2331,24 +2291,6 @@ const OVERPASS_URL        = 'https://overpass-api.de/api/interpreter';
 const OVERPASS_TIMEOUT_MS = 12000;
 const MAX_CACHED_PTS      = 300;
 
-// True only for a real deployed build (server.js stamps a real BUILD_SHA into
-// this meta tag; local dev leaves the raw '__BUILD_SHA__' placeholder in
-// place). Used to pace the background trail-geometry fetch loop — local dev
-// re-populates the cache far more often (page reloads during active
-// development, cache-busting version bumps while iterating on matching logic,
-// etc.) and shares Overpass's public rate limit with the deployed app and
-// everyone else using it, so dev should go slow and deliberate while
-// production can run at full speed against the same shared quota.
-const IS_PROD_BUILD = (() => {
-  const sha = document.querySelector('meta[name="build-sha"]')?.content || '';
-  return !!sha && sha !== '__BUILD_SHA__';
-})();
-// Extra delay inserted between each trail in the background fetch loop, on
-// top of the per-request rate-limit/retry backoff already in
-// fetchTrailPolylineDirect() — zero in production (go as fast as the retry
-// backoff allows), a few seconds in dev to avoid burning through the shared
-// Overpass quota just from routine local iteration.
-const BACKGROUND_FETCH_PACE_MS = IS_PROD_BUILD ? 0 : 4000;
 
 // Fuzzy keyword-overlap matching used to live here and repeatedly caused real
 // contamination — e.g. "River Trail" in Carlisle (14mi away) auto-matched
@@ -3440,7 +3382,9 @@ async function copyTrailInvestigatePrompt(id) {
   const n = NEARBY_TRAILS.find(x => x.id === id);
   if (!n) return;
   const prompt = buildTrailInvestigatePrompt(n);
-  const btn = document.getElementById(`investigate-${id}`);
+  // Two possible callers with their own button ids: the Nearby card and the
+  // map popup — whichever is present in the DOM right now gets the checkmark.
+  const btn = document.getElementById(`investigate-${id}`) || document.getElementById(`investigate-popup-${id}`);
   try {
     await navigator.clipboard.writeText(prompt);
     if (btn) { const orig = btn.textContent; btn.textContent = '✅ Copied!'; setTimeout(() => { btn.textContent = orig; }, 1500); }
@@ -3467,11 +3411,14 @@ function fmtDate(iso) {
   // Migrate any old data that had status='wishlist'
   trails = trails.filter(t => !t.status || t.status === 'ridden');
   trails.forEach(t => { delete t.status; });
-  await Promise.all([loadTrailGeometryCache(), loadIgnoredTrails(), loadTrailFailureCounts()]); // fast — hydrates trail lines + ignore list + retry-cap state before first render
+  await Promise.all([loadTrailGeometryCache(), loadIgnoredTrails(), loadTrailFailureCounts()]); // fast — hydrates trail lines (committed seed + any runtime cache) + ignore list + retry-cap state before first render
   render();
   // Parking pins are revealed per-trail on click (see revealParkingForTrail),
   // not rendered eagerly — keeps the map uncluttered until a rider asks for them.
-  fetchAllNearbyTrailLines(); // background — only fetches trails still missing from the cache
+  // No background Overpass sweep anymore — trail geometry is committed static
+  // data (see trail-geometry-seed/ + CLAUDE.md); a missing line means the
+  // trail hasn't been seeded yet, surfaced via "📋 Investigate" rather than
+  // retried automatically.
 })();
 </script>
 </body>
