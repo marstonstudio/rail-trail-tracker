@@ -18,6 +18,9 @@ A single-page web app for tracking bicycle rides on rail trails. Users import Ga
 ```
 server.js                          Express server + build metadata stamping
 public/index.html                  Entire frontend (HTML + CSS + JS, ~2500 lines)
+public/manifest.json               PWA manifest (name, icons, theme colors, standalone display)
+public/sw.js                       Service worker — app-shell/API caching + offline map-tile downloads
+public/icons/                      Generated app icons (192/512/maskable/apple-touch)
 Dockerfile                         Multi-platform build, ENV-based build metadata
 .github/workflows/docker-publish.yml   CI: build → push to Docker Hub on main
 docker-compose.nas.yml             NAS deployment config
@@ -247,6 +250,41 @@ This publishes `https://ugreen-nas.<tailnet-name>.ts.net/` — reachable from an
 **Known snag**: `tailscale cert <hostname>` can fail with `500 Internal Server Error: SetDNS "_acme-challenge...` even when HTTPS Certificates is already enabled tailnet-wide — this was stuck control-plane registration state on the container, not a settings issue. Fix: `docker restart tailscale`, wait ~30s for it to reconnect (`docker exec tailscale tailscale status` should show all devices), then retry `docker exec tailscale tailscale cert <hostname>`.
 
 The app itself needs no changes for this — Tailscale/HTTPS is purely a network-layer proxy in front of the existing plain-HTTP Express server.
+
+## Progressive Web App (installable + offline maps)
+
+The app is installable on both desktop (Chrome/Edge "Install app") and iOS Safari ("Add to Home Screen") and works offline, including for map tiles on trails you've explicitly downloaded. Requires HTTPS (see Tailscale section above) — install/offline features won't activate over plain `http://ugreen.local:3000`.
+
+**`public/manifest.json`**: name, theme color (`#5d9732`, matching the icon's green), `display: standalone`, and three icons in `public/icons/` (`icon-192.png`, `icon-512.png`, `icon-maskable-512.png` for Android's adaptive-icon safe zone, plus `apple-touch-icon.png` for iOS). The artwork is traced directly from `~/Downloads/RTC_logo.png` (a rolling-hills-with-a-rail-trail-path mark, green `#5d9732`/white, transparent background) — composited onto a white background at each required size/padding via a one-off Pillow script (not checked in; the source PNG stays local, not part of the repo). Personal/private-use app, not published or distributed, so tracing an existing organization's logo this closely was an explicit, deliberate choice — revisit if this app is ever shared more broadly.
+
+**`public/sw.js`**: a single service worker handling three concerns, each with its own cache:
+1. **App shell** (`shell-v{N}` cache) — the SPA itself, Leaflet's CDN JS/CSS, icons, manifest. Navigation requests (the HTML page) are network-first-with-cache-fallback so a normal reload always gets the latest deploy; everything else is cache-first. `SW_VERSION` in `sw.js` is the cache-busting key — bump it whenever the shell asset list changes (the `activate` handler deletes any cache not matching current names).
+2. **API responses** (`api-v{N}` cache) — `/api/rides`, `/api/trail-geometry`, `/api/ignored-trails`, `/api/trail-fetch-failures` are network-first with cache fallback, so offline still shows your real (if slightly stale) ride list and trail data instead of nothing.
+3. **Map tiles** (`map-tiles` cache, no version suffix — deliberately never cleared on redeploy, since re-downloading a trail's tiles every time the app ships would defeat the point) — stale-while-revalidate for any tile you've simply viewed, plus bulk on-demand caching via `postMessage({type:'CACHE_TILES', urls, requestId})` for the explicit "Save Offline" feature below. Progress is reported back to the page via `postMessage({type:'TILE_PROGRESS', requestId, done, total})`.
+
+**Offline trail downloads**: every Nearby card and map popup has a "⬇️ Save Offline" button (`downloadTrailForOffline(id)` in `index.html`) that becomes "✅ Offline" once done, persisted in `localStorage` (`offlineDownloadedTrailIds`) so the state survives reloads. Tiles are computed **along the actual route**, not the trail's bounding-box rectangle — `computeTrailTileUrls()` samples every point of the trail's cached `TRAIL_POLYLINES` geometry (falling back to just the declared `lat/lng` if no geometry is cached yet) and collects the tile ± a 1-tile buffer at zoom levels 13–16 (`OFFLINE_ZOOMS`/`OFFLINE_TILE_BUFFER`), so a long diagonal trail doesn't pull in a huge irrelevant rectangle of unrelated map. Tile URLs are generated with the same `{s}` subdomain-assignment formula Leaflet itself uses (`(x+y) % 4` into `'abcd'`) so the cached URL is byte-identical to what Leaflet will actually request later — this is what makes the stale-while-revalidate cache hit work offline instead of silently re-fetching. A 27-mile trail (Ammonoosuc, `n114`) came out to ~570 tiles across the 4 zoom levels — reasonable for a single on-demand download.
+
+**What's NOT covered**: live GPS position while riding still needs a network fetch for any *new* map area outside what was pre-downloaded (panning off the cached route). FIT import and the ride-matching Overpass lookup also require a connection — those aren't cached, since they're one-shot online operations rather than standing app data.
+
+**Multiple trails, real measured sizes**: downloads are independent and additive — each trail's tiles just accumulate in the one `map-tiles` cache (`offlineDownloadedTrailIds`, a `Set`, tracks which trails are done; Cache Storage itself dedupes any tile URL two adjacent/overlapping trails happen to share). Measured in practice: a 27.5-mile trail (Ammonoosuc) is ~570 tiles / ~3 MB; a typical ~10-mile trail is ~1-1.5 MB; the longest trail in the list (Lamoille Valley, 93 mi) would be ~12 MB. All comfortably small on a phone.
+
+**Clearing the cache**: a small "💾 N trails offline · X MB" status row sits below the sidebar tabs (visible on both My Rides and Nearby), with a "Clear" button (`clearOfflineMaps()`) that does `caches.delete('map-tiles')` and empties `offlineDownloadedTrailIds`. Deliberately all-or-nothing, not per-trail — since tiles aren't tagged by which trail(s) requested them, removing "just one trail's" tiles could silently break a different downloaded trail that happens to share some of the same tiles. Re-downloading afterward is cheap enough (a few MB, seconds) that this tradeoff was an explicit choice over building tile-ownership tracking.
+
+## Ride Mode (full-screen live-GPS view)
+
+A "🚴 Ride Mode" header button (`enterRideMode()` in `index.html`) switches to a full-screen view meant to be glanced at while actually riding, phone mounted on the bike — distinct from the normal browse/log-rides UI.
+
+**What it does**: hides the header and sidebar via a `body.ride-mode` CSS class (`.main`/`.map-wrap` expand to fill the viewport), starts `navigator.geolocation.watchPosition()` with `enableHighAccuracy:true`, and renders the live fix as a blue dot (`L.circleMarker`) plus a translucent accuracy-radius circle on the *same* Leaflet map instance already showing trail lines/ridden rides — not a second map — so all existing trail rendering just works underneath it for free. Speed and GPS accuracy are shown in a bottom-left readout, converted to mph/feet.
+
+**Follow behavior**: first fix does `map.setView(latlng, 17)` (zoomed in); every fix after that uses `map.panTo(latlng)` — deliberately *not* `setView` — so the map re-centers on the rider's position without ever overriding a zoom level the rider manually chose (e.g. zooming out to see more of the trail ahead). Leaflet's own zoom controls remain visible and usable throughout.
+
+**Keeping the screen on**: requests a Screen Wake Lock (`navigator.wakeLock.request('screen')`) on entry, releases it on exit, and re-requests it on `visibilitychange` since browsers auto-release the lock when a tab is backgrounded (e.g. phone briefly locks, user unlocks again mid-ride). Wrapped in try/catch — degrades silently on browsers/contexts without support or where the user hasn't granted it, rather than blocking the rest of Ride Mode.
+
+**Exiting**: an "✕" button (top-right, `env(safe-area-inset-*)`-aware for notches in landscape) or the Escape key calls `exitRideMode()`, which clears the geolocation watch, removes the GPS marker/circle, releases the wake lock, and restores normal layout.
+
+**Fullscreen/landscape lock — best-effort only**: `tryEnterImmersiveMode()` attempts `requestFullscreen()` and `screen.orientation.lock('landscape')`, both wrapped in try/catch since **iOS Safari supports neither** (no arbitrary-element Fullscreen API, no Orientation Lock API) — on iPhone, Ride Mode's "full screen" is purely the CSS overlay filling the viewport, and landscape orientation is left entirely up to the rider's physical phone mounting, not software-enforced. This is the same reason installing the app as a PWA (see above) matters for iPhone use — a standalone-launched PWA already has no Safari chrome to hide, making Ride Mode's own fullscreen attempt largely moot there but the CSS overlay still applies on top of it.
+
+**Not covered / left for later**: no heading-based marker rotation (GPS `coords.heading` is available but unused — could point the dot in the direction of travel), no route-deviation warning, no auto-start/stop tied to actual movement.
 
 ## Data migration
 

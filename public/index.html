@@ -2,10 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Rail Trail Tracker</title>
   <meta name="build-date" content="__BUILD_DATE__">
   <meta name="build-sha"  content="__BUILD_SHA__">
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#5d9732" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Rail Trails" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <style>
@@ -99,6 +105,56 @@
     }
 
     #map { width: 100%; height: 100%; z-index: 0; }
+
+    .ride-exit-btn, .ride-status { display: none; }
+
+    body.ride-mode { overflow: hidden; }
+    body.ride-mode header,
+    body.ride-mode .sidebar,
+    body.ride-mode .map-legend { display: none !important; }
+    body.ride-mode .main { display: block; height: 100vh; }
+    body.ride-mode .map-wrap {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 10;
+    }
+    body.ride-mode .ride-exit-btn {
+      display: flex;
+      position: absolute;
+      top: calc(14px + env(safe-area-inset-top));
+      right: calc(14px + env(safe-area-inset-right));
+      z-index: 1000;
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: rgba(26,26,26,0.72);
+      color: #fff;
+      border: none;
+      font-size: 20px;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body.ride-mode .ride-status {
+      display: block;
+      position: absolute;
+      bottom: calc(14px + env(safe-area-inset-bottom));
+      left: calc(14px + env(safe-area-inset-left));
+      z-index: 1000;
+      background: rgba(255,255,255,0.94);
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      box-shadow: 0 2px 10px rgba(0,0,0,.2);
+      line-height: 1.5;
+      max-width: min(70vw, 320px);
+    }
+    .ride-status .ride-status-error { color: #b0272d; font-weight: 700; }
 
     .sidebar {
       background: var(--surface);
@@ -713,11 +769,42 @@
     }
     .lf-popup-log:hover { background: #225e2c; }
 
+    .offline-manager {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 14px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.76rem;
+      color: var(--muted);
+    }
+    .offline-manager #offline-manager-clear {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px 10px;
+      font-size: 0.74rem;
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .offline-manager #offline-manager-clear:hover { background: var(--surface); border-color: #bbb; }
+
     @media (max-width: 800px) {
       .main { grid-template-columns: 1fr; grid-template-rows: 320px 1fr; height: auto; }
       .sidebar { border-left: none; border-top: 1px solid var(--border); min-height: 300px; }
       .stats { display: none; }
       .modal-overlay { right: 0; }
+    }
+
+    @media (max-width: 480px) {
+      header { padding: 10px 14px; gap: 10px; }
+      header h1 { font-size: 1rem; }
+      .lbl-ext { display: none; }
+      .import-btn, .add-btn { padding: 8px 10px; font-size: 0.8rem; }
     }
   </style>
 </head>
@@ -739,26 +826,32 @@
   <div class="header-actions">
     <button class="import-btn" onclick="document.getElementById('fit-input').click()">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1v9M4 6l4 4 4-4"/><path d="M2 12v2h12v-2"/></svg>
-      Import FIT
+      Import<span class="lbl-ext"> FIT</span>
     </button>
-    <button class="add-btn" onclick="openModal()">+ Log Ride</button>
+    <button class="add-btn" onclick="enterRideMode()">🚴 Ride<span class="lbl-ext"> Mode</span></button>
   </div>
   <input type="file" id="fit-input" accept=".fit" multiple style="display:none" onchange="handleFitInput(this)" />
 </header>
 
 <div class="main">
-  <div style="position:relative">
+  <div class="map-wrap" style="position:relative">
     <div id="map" style="width:100%;height:100%"></div>
     <div class="map-legend">
       <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Ridden</div>
       <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div> Nearby trail</div>
       <div class="legend-item"><div class="legend-dot" style="background:white;border:2px solid var(--blue);border-radius:4px;font:700 8px/1 sans-serif;color:var(--blue);display:flex;align-items:center;justify-content:center">P</div> Parking</div>
     </div>
+    <button class="ride-exit-btn" id="ride-exit-btn" onclick="exitRideMode()" title="Exit Ride Mode">✕</button>
+    <div class="ride-status" id="ride-status"></div>
   </div>
   <div class="sidebar">
     <div class="sidebar-tabs">
       <button class="tab active" onclick="switchTab('rides')" id="tab-rides">✅ My Rides</button>
       <button class="tab" onclick="switchTab('nearby')" id="tab-nearby">🗺️ Nearby <span id="nearby-count-badge" style="font-weight:400;opacity:.7">(17)</span></button>
+    </div>
+    <div class="offline-manager" id="offline-manager">
+      <span id="offline-manager-text">💾 No trails downloaded for offline use</span>
+      <button id="offline-manager-clear" onclick="clearOfflineMaps()" style="display:none">Clear</button>
     </div>
     <div class="tab-panel active" id="panel-rides">
       <div class="panel-header" id="rides-panel-header" style="display:none">
@@ -1669,6 +1762,7 @@ function buildNearbyPopup(n) {
     </div>
     ${parkingRowsHtml(n)}
     ${!ignored ? `<button class="lf-popup-log" id="investigate-popup-${n.id}" title="Copy a prompt for Claude to investigate/improve this trail's mapped path" onclick="copyTrailInvestigatePrompt('${n.id}')">📋 Investigate</button>` : ''}
+    <button class="lf-popup-log" id="offline-popup-${n.id}" onclick="downloadTrailForOffline('${n.id}')">${offlineDownloadedTrailIds.has(n.id) ? '✅ Offline' : '⬇️ Save Offline'}</button>
     ${!ridden ? `<button class="lf-popup-log" onclick="logRideFromNearby('${n.id}')">+ Log a Ride</button>` : ''}`;
 }
 
@@ -1981,6 +2075,7 @@ function renderNearby() {
           </a>
           ${parkingLinksHtml(n, 'link-btn')}
           <button class="link-btn" id="investigate-${n.id}" title="Copy a prompt for Claude to investigate/improve this trail's mapped path" onclick="copyTrailInvestigatePrompt('${n.id}')">📋 Investigate</button>
+          ${offlineButtonHtml(n, 'offline')}
           ${!ridden ? `<button class="log-btn" onclick="openModalFromNearby('${n.id}')">+ Log Ride</button>` : ''}
         </div>
       </div>`;
@@ -3432,6 +3527,279 @@ function fmtDate(iso) {
   return new Date(+y,+m-1,+d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 }
 
+// ─── PWA: service worker + per-trail offline map downloads ────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(e => console.warn('SW registration failed:', e));
+  });
+}
+
+let offlineDownloadedTrailIds = new Set();
+try {
+  offlineDownloadedTrailIds = new Set(JSON.parse(localStorage.getItem('offlineDownloadedTrailIds') || '[]'));
+} catch (e) { /* corrupt localStorage entry — start fresh */ }
+
+function saveOfflineDownloadedTrailIds() {
+  localStorage.setItem('offlineDownloadedTrailIds', JSON.stringify([...offlineDownloadedTrailIds]));
+}
+
+// Standard slippy-map tile math (Web Mercator).
+function lngLatToTile(lat, lng, z) {
+  const n = Math.pow(2, z);
+  const x = Math.floor((lng + 180) / 360 * n);
+  const latRad = lat * Math.PI / 180;
+  const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+  return { x, y };
+}
+
+// Matches Leaflet's own default subdomain-assignment formula for {s}, so the
+// cached tile URL is the same one Leaflet will actually request later.
+const TILE_SUBDOMAINS = 'abcd';
+function tileUrl(z, x, y) {
+  const sub = TILE_SUBDOMAINS[(x + y) % TILE_SUBDOMAINS.length];
+  return `https://${sub}.basemaps.cartocdn.com/rastertiles/voyager/${z}/${x}/${y}.png`;
+}
+
+const OFFLINE_ZOOMS = [13, 14, 15, 16];
+const OFFLINE_TILE_BUFFER = 1; // tiles on each side of the route at every zoom, for a bit of pan margin
+
+// Tiles are computed along the actual route (sampling every point of the
+// cached geometry, not the trail's bounding-box rectangle) so a long diagonal
+// trail doesn't pull in a huge irrelevant rectangle of unrelated map.
+function computeTrailTileUrls(n) {
+  const segments = TRAIL_POLYLINES[n.id];
+  const points = segments && segments.length ? segments.flat() : [[n.lat, n.lng]];
+  const urls = new Set();
+  for (const z of OFFLINE_ZOOMS) {
+    for (const [lat, lng] of points) {
+      const { x, y } = lngLatToTile(lat, lng, z);
+      for (let dx = -OFFLINE_TILE_BUFFER; dx <= OFFLINE_TILE_BUFFER; dx++) {
+        for (let dy = -OFFLINE_TILE_BUFFER; dy <= OFFLINE_TILE_BUFFER; dy++) {
+          urls.add(tileUrl(z, x + dx, y + dy));
+        }
+      }
+    }
+  }
+  return [...urls];
+}
+
+function offlineButtonHtml(n, idPrefix) {
+  const downloaded = offlineDownloadedTrailIds.has(n.id);
+  return `<button class="link-btn" id="${idPrefix}-${n.id}" onclick="downloadTrailForOffline('${n.id}')">${downloaded ? '✅ Offline' : '⬇️ Save Offline'}</button>`;
+}
+
+async function downloadTrailForOffline(id) {
+  const n = NEARBY_TRAILS.find(t => t.id === id);
+  if (!n || !('serviceWorker' in navigator)) return;
+  const btns = [document.getElementById(`offline-${id}`), document.getElementById(`offline-popup-${id}`)].filter(Boolean);
+  const urls = computeTrailTileUrls(n);
+  if (!urls.length) return;
+
+  const reg = await navigator.serviceWorker.ready;
+  const requestId = `${id}-${Date.now()}`;
+
+  await new Promise((resolve) => {
+    function onMessage(event) {
+      if (!event.data || event.data.requestId !== requestId) return;
+      if (event.data.type === 'TILE_PROGRESS') {
+        const pct = Math.round(100 * event.data.done / event.data.total);
+        btns.forEach(b => b.textContent = `⏳ ${pct}%`);
+        if (event.data.done >= event.data.total) {
+          navigator.serviceWorker.removeEventListener('message', onMessage);
+          resolve();
+        }
+      }
+    }
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    reg.active.postMessage({ type: 'CACHE_TILES', urls, requestId });
+  });
+
+  offlineDownloadedTrailIds.add(id);
+  saveOfflineDownloadedTrailIds();
+  btns.forEach(b => b.textContent = '✅ Offline');
+  renderOfflineManager();
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+// Multiple trails can be downloaded independently — they all just accumulate
+// in the one 'map-tiles' cache (Cache Storage dedupes any tile URL shared
+// between two overlapping/adjacent trails automatically). There's no
+// per-trail removal, deliberately: since tiles aren't tagged by which
+// trail(s) requested them, deleting "just one trail's" tiles could silently
+// break another downloaded trail that happens to share the same tiles —
+// clearing is all-or-nothing instead.
+async function computeOfflineCacheStats() {
+  if (!('caches' in window)) return { tileCount: 0, totalBytes: 0 };
+  try {
+    const cache = await caches.open('map-tiles');
+    const keys = await cache.keys();
+    let totalBytes = 0;
+    for (const req of keys) {
+      const res = await cache.match(req);
+      if (res) totalBytes += (await res.blob()).size;
+    }
+    return { tileCount: keys.length, totalBytes };
+  } catch (e) { return { tileCount: 0, totalBytes: 0 }; }
+}
+
+async function renderOfflineManager() {
+  const textEl = document.getElementById('offline-manager-text');
+  const clearBtn = document.getElementById('offline-manager-clear');
+  if (!textEl || !clearBtn) return;
+  const count = offlineDownloadedTrailIds.size;
+  if (count === 0) {
+    textEl.textContent = '💾 No trails downloaded for offline use';
+    clearBtn.style.display = 'none';
+    return;
+  }
+  textEl.textContent = `💾 ${count} trail${count === 1 ? '' : 's'} offline · calculating size…`;
+  clearBtn.style.display = 'none';
+  const { totalBytes } = await computeOfflineCacheStats();
+  textEl.textContent = `💾 ${count} trail${count === 1 ? '' : 's'} offline · ${formatBytes(totalBytes)}`;
+  clearBtn.style.display = 'inline-block';
+}
+
+async function clearOfflineMaps() {
+  const count = offlineDownloadedTrailIds.size;
+  if (!count) return;
+  if (!confirm(`Remove all downloaded offline maps (${count} trail${count === 1 ? '' : 's'})? You can re-download any trail later.`)) return;
+  try { await caches.delete('map-tiles'); } catch (e) { console.warn('Failed to clear map-tiles cache:', e.message); }
+  offlineDownloadedTrailIds.clear();
+  saveOfflineDownloadedTrailIds();
+  renderNearby(); // rebuilds every "✅ Offline" button back to "⬇️ Save Offline"
+  renderOfflineManager();
+}
+
+// ─── Ride Mode: full-screen live-GPS view for use while actually riding ───────
+let rideModeActive = false;
+let rideWatchId = null;
+let wakeLockSentinel = null;
+let rideLocationMarker = null;
+let rideAccuracyCircle = null;
+let rideHasFirstFix = false;
+
+function metersToFeet(m) { return m * 3.28084; }
+function mpsToMph(mps) { return mps * 2.23694; }
+
+function renderRideStatus(pos, errMsg) {
+  const el = document.getElementById('ride-status');
+  if (!el) return;
+  if (errMsg) {
+    el.innerHTML = `<span class="ride-status-error">⚠️ ${escHtml(errMsg)}</span>`;
+    return;
+  }
+  if (!pos) { el.textContent = '📍 Waiting for GPS fix…'; return; }
+  const { accuracy, speed } = pos.coords;
+  const mph = (typeof speed === 'number' && speed !== null && speed >= 0) ? mpsToMph(speed).toFixed(1) : null;
+  const acc = accuracy != null ? Math.round(metersToFeet(accuracy)) : null;
+  el.innerHTML = `${mph !== null ? `${mph} mph` : 'Speed: —'}${acc !== null ? ` &nbsp;·&nbsp; ±${acc} ft` : ''}`;
+}
+
+function onRidePosition(pos) {
+  const { latitude, longitude, accuracy } = pos.coords;
+  const latlng = [latitude, longitude];
+  if (!rideLocationMarker) {
+    rideLocationMarker = L.circleMarker(latlng, { radius: 9, color: '#fff', weight: 3, fillColor: '#2563b0', fillOpacity: 1, pane: 'markerPane' }).addTo(map);
+    rideAccuracyCircle = L.circle(latlng, { radius: accuracy || 20, color: '#2563b0', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(map);
+  } else {
+    rideLocationMarker.setLatLng(latlng);
+    rideAccuracyCircle.setLatLng(latlng).setRadius(accuracy || 20);
+  }
+  if (!rideHasFirstFix) {
+    rideHasFirstFix = true;
+    map.setView(latlng, 17);
+  } else {
+    // panTo (not setView) so a rider's own zoom-out choice is preserved —
+    // only the center follows the GPS fix, not the zoom level.
+    map.panTo(latlng, { animate: true, duration: 0.5 });
+  }
+  renderRideStatus(pos, null);
+}
+
+function onRideLocationError(err) {
+  const messages = {
+    1: 'Location permission denied — enable it in Settings to use Ride Mode.',
+    2: 'Location unavailable right now.',
+    3: 'Location fix timed out — still trying…',
+  };
+  renderRideStatus(null, messages[err.code] || 'Location error.');
+}
+
+function startRideLocationWatch() {
+  if (!navigator.geolocation) { renderRideStatus(null, 'Geolocation not supported on this browser.'); return; }
+  rideHasFirstFix = false;
+  renderRideStatus(null, null);
+  rideWatchId = navigator.geolocation.watchPosition(onRidePosition, onRideLocationError, {
+    enableHighAccuracy: true, maximumAge: 0, timeout: 15000,
+  });
+}
+
+function stopRideLocationWatch() {
+  if (rideWatchId != null) navigator.geolocation.clearWatch(rideWatchId);
+  rideWatchId = null;
+  if (rideLocationMarker) { map.removeLayer(rideLocationMarker); rideLocationMarker = null; }
+  if (rideAccuracyCircle) { map.removeLayer(rideAccuracyCircle); rideAccuracyCircle = null; }
+}
+
+// Screen Wake Lock — keeps the phone from sleeping while mounted and riding.
+// Browsers release the lock automatically when the tab is backgrounded, so
+// it's re-requested on visibilitychange if Ride Mode is still active.
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLockSentinel = await navigator.wakeLock.request('screen');
+      wakeLockSentinel.addEventListener('release', () => { wakeLockSentinel = null; });
+    }
+  } catch (e) { console.warn('Wake lock request failed:', e.message); }
+}
+function releaseWakeLock() {
+  if (wakeLockSentinel) { wakeLockSentinel.release().catch(() => {}); wakeLockSentinel = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (rideModeActive && document.visibilityState === 'visible' && !wakeLockSentinel) requestWakeLock();
+});
+
+// Best-effort only — iOS Safari supports neither the Fullscreen API on
+// arbitrary elements nor Screen Orientation lock, so this silently no-ops
+// there; Ride Mode still works via the CSS fullscreen overlay plus the
+// rider's own phone orientation (mounted landscape).
+async function tryEnterImmersiveMode() {
+  try {
+    if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
+  } catch (e) { /* not supported / not user-gesture-eligible — fine, CSS overlay still fills the screen */ }
+  try {
+    if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape');
+  } catch (e) { /* not supported (notably iOS Safari) — rider's physical phone orientation still governs the view */ }
+}
+function tryExitImmersiveMode() {
+  try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch (e) {}
+  try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) {}
+}
+
+function enterRideMode() {
+  if (rideModeActive) return;
+  rideModeActive = true;
+  document.body.classList.add('ride-mode');
+  map.invalidateSize();
+  startRideLocationWatch();
+  requestWakeLock();
+  tryEnterImmersiveMode();
+}
+function exitRideMode() {
+  if (!rideModeActive) return;
+  rideModeActive = false;
+  document.body.classList.remove('ride-mode');
+  stopRideLocationWatch();
+  releaseWakeLock();
+  tryExitImmersiveMode();
+  map.invalidateSize();
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && rideModeActive) exitRideMode(); });
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 (async () => {
   trails = await loadRides();
@@ -3440,6 +3808,7 @@ function fmtDate(iso) {
   trails.forEach(t => { delete t.status; });
   await Promise.all([loadTrailGeometryCache(), loadIgnoredTrails(), loadTrailFailureCounts()]); // fast — hydrates trail lines from the runtime cache + ignore list + retry-cap state before first render
   render();
+  renderOfflineManager();
   // Parking pins are revealed per-trail on click (see revealParkingForTrail),
   // not rendered eagerly — keeps the map uncluttered until a rider asks for them.
   // No background Overpass sweep anymore — trail geometry lives only in the
