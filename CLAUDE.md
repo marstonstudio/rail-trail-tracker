@@ -206,6 +206,46 @@ npm run dev        # node --watch server.js
 # rides saved to /data/rides.json (set RIDES_FILE env var to override)
 ```
 
+## HTTPS access via Tailscale (for iOS Geolocation)
+
+The app is normally served over plain HTTP (`http://ugreen.local:3000`), which blocks browser APIs that require a secure origin — notably `navigator.geolocation.watchPosition`, needed for a planned live-GPS-on-map feature (see below). Rather than reworking the deployment (S3/CloudFront + ACM cert, or a serverless rewrite), the NAS runs Tailscale to get a tailnet-scoped HTTPS URL with zero app/backend changes.
+
+**Setup**: Tailscale runs in its own Docker container/project on the NAS (`tailscale`, separate from the app's `bike` project — not merged into the same compose file):
+
+```yaml
+services:
+  tailscale:
+    container_name: tailscale
+    image: tailscale/tailscale:latest
+    hostname: ugreen-nas
+    restart: unless-stopped
+    environment:
+      - TS_AUTHKEY=<your auth key>
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=false
+    volumes:
+      - ./tailscale-state:/var/lib/tailscale
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - net_admin
+      - net_raw
+```
+
+No `TS_ROUTES` needed — this only needs to reach one app on the NAS's own LAN IP, not advertise/route the whole subnet.
+
+Once the container is up and authenticated, proxy the app's port to an HTTPS tailnet URL:
+
+```bash
+docker exec tailscale tailscale serve --bg http://<nas-lan-ip>:3000
+```
+
+This publishes `https://ugreen-nas.<tailnet-name>.ts.net/` — reachable from any device signed into the same tailnet (including over cellular, not just LAN), with a Tailscale-issued Let's Encrypt cert auto-provisioned. The tailnet's admin console must have **HTTPS Certificates** enabled (Network → DNS → HTTPS Certificates) for cert issuance to work at all — check there first if certs fail outright.
+
+**Known snag**: `tailscale cert <hostname>` can fail with `500 Internal Server Error: SetDNS "_acme-challenge...` even when HTTPS Certificates is already enabled tailnet-wide — this was stuck control-plane registration state on the container, not a settings issue. Fix: `docker restart tailscale`, wait ~30s for it to reconnect (`docker exec tailscale tailscale status` should show all devices), then retry `docker exec tailscale tailscale cert <hostname>`.
+
+The app itself needs no changes for this — Tailscale/HTTPS is purely a network-layer proxy in front of the existing plain-HTTP Express server.
+
 ## Data migration
 
 On startup, `server.js` auto-migrates `trails.json` → `rides.json` if the old file exists and the new one doesn't (one-time migration, safe to leave in place).
