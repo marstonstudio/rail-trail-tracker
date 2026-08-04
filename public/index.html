@@ -156,6 +156,11 @@
     }
     .ride-status .ride-status-error { color: #b0272d; font-weight: 700; }
 
+    body.ride-mode .leaflet-bottom.leaflet-right {
+      right: calc(14px + env(safe-area-inset-right));
+      bottom: calc(14px + env(safe-area-inset-bottom));
+    }
+
     .sidebar {
       background: var(--surface);
       border-left: 1px solid var(--border);
@@ -1615,6 +1620,10 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r
   maxZoom: 20,
   subdomains: 'abcd',
 }).addTo(map);
+// Drop Leaflet's own "Leaflet |" branding + flag icon from the attribution
+// box — that's just Leaflet's optional self-promotion, not required. The
+// OpenStreetMap/CARTO text stays, since their tile usage terms require it.
+map.attributionControl.setPrefix(false);
 
 const mapLayers = {};     // trail id → ridden layer
 const nearbyMarkers = {}; // nearby id → blue marker or polyline
@@ -3785,6 +3794,7 @@ function enterRideMode() {
   rideModeActive = true;
   document.body.classList.add('ride-mode');
   map.invalidateSize();
+  map.zoomControl.setPosition('bottomright'); // lines up with the exit button, both on the right edge
   startRideLocationWatch();
   requestWakeLock();
   tryEnterImmersiveMode();
@@ -3793,6 +3803,7 @@ function exitRideMode() {
   if (!rideModeActive) return;
   rideModeActive = false;
   document.body.classList.remove('ride-mode');
+  map.zoomControl.setPosition('topleft'); // restore normal-view position
   stopRideLocationWatch();
   releaseWakeLock();
   tryExitImmersiveMode();
