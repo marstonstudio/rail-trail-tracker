@@ -474,6 +474,7 @@
       flex-direction: column;
       gap: 5px;
     }
+    .map-legend.legend-hidden { display: none; }
     .legend-item { display: flex; align-items: center; gap: 7px; }
     .legend-dot {
       width: 12px;
@@ -1624,6 +1625,11 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r
 // box — that's just Leaflet's optional self-promotion, not required. The
 // OpenStreetMap/CARTO text stays, since their tile usage terms require it.
 map.attributionControl.setPrefix(false);
+
+// Hide the map legend while a trail's info card (popup) is open — the two
+// otherwise overlap in the bottom-left corner.
+map.on('popupopen', () => document.querySelector('.map-legend')?.classList.add('legend-hidden'));
+map.on('popupclose', () => document.querySelector('.map-legend')?.classList.remove('legend-hidden'));
 
 const mapLayers = {};     // trail id → ridden layer
 const nearbyMarkers = {}; // nearby id → blue marker or polyline
