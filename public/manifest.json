@@ -1,6 +1,6 @@
 {
-  "name": "Rail Trail Tracker",
-  "short_name": "Rail Trails",
+  "name": "Bike Ride",
+  "short_name": "Bike Ride",
   "description": "Track bicycle rides on rail trails, with offline maps for riding without signal.",
   "start_url": "/",
   "scope": "/",

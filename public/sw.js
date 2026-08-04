@@ -2,7 +2,7 @@
 // Bump SW_VERSION whenever this file or the app-shell asset list changes —
 // it's the cache-busting key for the shell/API caches (map-tiles is versionless,
 // since re-downloading a trail's tiles on every deploy would defeat the point).
-const SW_VERSION = 'v3';
+const SW_VERSION = 'v4';
 const SHELL_CACHE = `shell-${SW_VERSION}`;
 const API_CACHE = `api-${SW_VERSION}`;
 const TILE_CACHE = 'map-tiles';
