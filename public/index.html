@@ -192,7 +192,7 @@
        onto .map-wrap (see map init) so the zoom control isn't dragged along
        with the rotation. */
     body.ride-mode .map-wrap { overflow: hidden; }
-    body.ride-mode #map { transition: transform 0.35s linear; }
+    body.ride-mode #ride-map-frame { transition: transform 0.35s linear; }
 
     .sidebar {
       background: var(--surface);
@@ -869,7 +869,9 @@
 
 <div class="main">
   <div class="map-wrap" style="position:relative">
-    <div id="map" style="width:100%;height:100%"></div>
+    <div id="ride-map-frame" style="width:100%;height:100%">
+      <div id="map" style="width:100%;height:100%"></div>
+    </div>
     <button class="ride-exit-btn" id="ride-exit-btn" onclick="exitRideMode()" title="Exit Ride Mode">✕</button>
     <div class="ride-compass" id="ride-compass" title="Direction of travel">
       <svg class="ride-compass-needle" id="ride-compass-needle" viewBox="0 0 64 64" width="64" height="64">
@@ -1672,11 +1674,12 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r
 // OpenStreetMap/CARTO text stays, since their tile usage terms require it.
 map.attributionControl.setPrefix(false);
 
-// Reparent Leaflet's control container out of #map onto its sibling .map-wrap.
-// Ride Mode's heading-up rotation applies a CSS transform directly to #map —
-// without this, the zoom control would spin and misposition along with it.
-// Harmless in normal (non-rotated) view since .map-wrap and #map share the
-// same box there.
+// Reparent Leaflet's control container out of #map onto its great-grandparent
+// .map-wrap. Ride Mode's heading-up rotation applies a CSS transform to
+// #ride-map-frame (a wrapper around #map, see that div in the HTML) — without
+// this, the zoom control would spin and misposition along with it. Harmless
+// in normal (non-rotated) view since .map-wrap, #ride-map-frame, and #map
+// all share the same box there.
 if (map._controlContainer) document.querySelector('.map-wrap').appendChild(map._controlContainer);
 
 const mapLayers = {};     // trail id → ridden layer
@@ -3826,43 +3829,50 @@ function bearingDeg(lat1, lng1, lat2, lng2) {
 // smoothing/rotation always turn the short way instead of spinning through 350°.
 function angleDelta(a, b) { return ((b - a + 540) % 360) - 180; }
 
+// #map itself is never resized/repositioned/rotated — Leaflet manages that
+// element directly, and repeatedly mutating its own inline size/transform
+// on every Ride Mode enter/exit fought with Leaflet's internal size cache
+// and iOS Safari's reflow timing, causing real bugs (map left rotated after
+// exit, fragmented/blank tiles). Instead, #ride-map-frame — a plain wrapper
+// div, opaque to Leaflet — absorbs all of that; #map always simply fills it
+// at a stable 100%/100%, so Leaflet only ever sees one clean container
+// resize (frame growing/shrinking), never anything about rotation.
 function applyRideMapRotationLayout() {
   const wrap = document.querySelector('.map-wrap');
-  const mapEl = document.getElementById('map');
-  if (!wrap || !mapEl) return;
-  // Size #map to cover the wrap's diagonal so rotating it never exposes a
-  // blank corner, then center it over the wrap via negative margins.
+  const frame = document.getElementById('ride-map-frame');
+  if (!wrap || !frame) return;
+  // Size the frame to cover the wrap's diagonal so rotating it never exposes
+  // a blank corner, then center it over the wrap via negative margins.
   const diag = Math.ceil(Math.hypot(wrap.clientWidth, wrap.clientHeight)) + 60;
-  mapEl.style.position = 'absolute';
-  mapEl.style.left = '50%';
-  mapEl.style.top = '50%';
-  mapEl.style.width = diag + 'px';
-  mapEl.style.height = diag + 'px';
-  mapEl.style.marginLeft = (-diag / 2) + 'px';
-  mapEl.style.marginTop = (-diag / 2) + 'px';
+  frame.style.position = 'absolute';
+  frame.style.left = '50%';
+  frame.style.top = '50%';
+  frame.style.width = diag + 'px';
+  frame.style.height = diag + 'px';
+  frame.style.marginLeft = (-diag / 2) + 'px';
+  frame.style.marginTop = (-diag / 2) + 'px';
+  // Same deferred re-check as resetRideMapLayout() below, for the same
+  // reason: a same-tick invalidateSize() can run before iOS Safari has
+  // actually reflowed the frame's just-changed size.
   map.invalidateSize({ pan: false });
+  requestAnimationFrame(() => map.invalidateSize({ pan: false }));
 }
 
 function resetRideMapLayout() {
-  const mapEl = document.getElementById('map');
-  if (!mapEl) return;
-  mapEl.style.position = '';
-  mapEl.style.left = '';
-  mapEl.style.top = '';
-  mapEl.style.width = '100%';
-  mapEl.style.height = '100%';
-  mapEl.style.marginLeft = '';
-  mapEl.style.marginTop = '';
-  mapEl.style.transform = '';
-  // A same-tick invalidateSize() reads the container's offsetWidth/Height —
-  // on iOS Safari this can run before the browser has actually reflowed the
-  // just-restored layout (header/sidebar reappearing changes #map's real
-  // size too), leaving Leaflet's internal _size stuck at ride-mode's huge
-  // dimensions while the DOM itself looks normal. That desync renders tiles
-  // for a canvas far bigger than what's visible — seen as a small fragment
-  // of map in one corner with the rest blank. Defer to the next couple of
-  // paint frames so Leaflet re-measures only once the real layout has
-  // settled; a single rAF isn't always enough on iOS to guarantee that.
+  const frame = document.getElementById('ride-map-frame');
+  if (!frame) return;
+  frame.style.position = '';
+  frame.style.left = '';
+  frame.style.top = '';
+  frame.style.width = '100%';
+  frame.style.height = '100%';
+  frame.style.marginLeft = '';
+  frame.style.marginTop = '';
+  frame.style.transform = '';
+  // Still defer the re-check across a couple of animation frames as a safety
+  // margin — a same-tick invalidateSize() reads #map's offsetWidth/Height,
+  // and on iOS Safari that can run before the browser has actually reflowed
+  // the frame's just-changed size.
   map.invalidateSize({ pan: false });
   requestAnimationFrame(() => {
     map.invalidateSize({ pan: false });
@@ -3871,16 +3881,17 @@ function resetRideMapLayout() {
 }
 
 function updateRideHeadingRotation() {
-  const mapEl = document.getElementById('map');
+  const frame = document.getElementById('ride-map-frame');
   const needle = document.getElementById('ride-compass-needle');
   const label = document.getElementById('ride-compass-label');
-  if (!mapEl) return;
-  // Rotate the map opposite the travel heading so "forward" always renders
-  // pointing up the screen (standard heading-up nav convention). The compass
-  // needle gets the same rotation, since it points at true north — a fixed
-  // direction on the map — not at the rider's own (always-up) heading.
+  if (!frame) return;
+  // Rotate the frame (never #map itself) opposite the travel heading so
+  // "forward" always renders pointing up the screen (standard heading-up nav
+  // convention). The compass needle gets the same rotation, since it points
+  // at true north — a fixed direction on the map — not at the rider's own
+  // (always-up) heading.
   const rot = rideHeadingDeg == null ? '' : `rotate(${-rideHeadingDeg}deg)`;
-  mapEl.style.transform = rot;
+  frame.style.transform = rot;
   if (needle) needle.style.transform = rot;
   if (label) {
     label.textContent = rideHeadingDeg == null ? '—' : RIDE_COMPASS_DIRS[Math.round(rideHeadingDeg / 45) % 8];
