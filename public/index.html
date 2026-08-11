@@ -3901,6 +3901,13 @@ function renderRideStatus(pos, errMsg) {
 }
 
 function onRidePosition(pos) {
+  // navigator.geolocation.clearWatch() only stops *future* callbacks — a fix
+  // already in flight when Ride Mode is exited can still land afterward, and
+  // without this guard it would resurrect the GPS marker, re-pan the map,
+  // and re-apply the heading rotation right after exitRideMode() just reset
+  // everything (visible as the exit button/compass correctly disappearing,
+  // but the map itself snapping back into its rotated ride-mode state).
+  if (!rideModeActive) return;
   const { latitude, longitude, accuracy, heading } = pos.coords;
   const latlng = [latitude, longitude];
   onRideHeadingSample(latitude, longitude, typeof heading === 'number' ? heading : null);
