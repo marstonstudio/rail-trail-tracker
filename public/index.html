@@ -4000,8 +4000,16 @@ function tryExitImmersiveMode() {
   try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) {}
 }
 
+let lastRideModeExitAt = 0;
 function enterRideMode() {
   if (rideModeActive) return;
+  // The exit button and the header's own "Ride" button both sit in the
+  // top-right corner — a duplicate/bounced touch event landing at that same
+  // coordinate right as the header reappears (a real iOS quirk) would hit
+  // the newly-revealed Ride button and instantly re-enter, making exit look
+  // like it silently does nothing. Ignore an entry that follows an exit too
+  // closely; a deliberate re-tap well after this window still works fine.
+  if (Date.now() - lastRideModeExitAt < 600) return;
   rideModeActive = true;
   document.body.classList.add('ride-mode');
   map.invalidateSize();
@@ -4027,6 +4035,7 @@ function exitRideMode() {
   try { tryExitImmersiveMode(); } catch (e) { console.warn('exitRideMode: tryExitImmersiveMode failed', e); }
   if (rideResizeHandler) { window.removeEventListener('resize', rideResizeHandler); rideResizeHandler = null; }
   resetRideMapLayout();
+  lastRideModeExitAt = Date.now();
 }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && rideModeActive) exitRideMode(); });
 
