@@ -106,7 +106,7 @@
 
     #map { width: 100%; height: 100%; z-index: 0; }
 
-    .ride-exit-btn, .ride-status { display: none; }
+    .ride-exit-btn, .ride-status, .ride-compass { display: none; }
 
     body.ride-mode { overflow: hidden; }
     body.ride-mode header,
@@ -433,23 +433,6 @@
       background: var(--bg);
     }
     .link-btn:hover { border-color: #bbb; color: var(--text); }
-
-    .log-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 4px 10px;
-      border: none;
-      border-radius: 6px;
-      font-size: 0.75rem;
-      font-weight: 600;
-      cursor: pointer;
-      background: var(--green);
-      color: white;
-      transition: background 0.1s;
-      margin-left: auto;
-    }
-    .log-btn:hover { background: #225e2c; }
 
     /* Filter row in nearby panel — collapsed behind a toggle by default */
     .filter-toggle-btn {
@@ -1820,7 +1803,6 @@ function parkingRowsHtml(n) {
 
 function buildNearbyPopup(n) {
   const ridden = riddenForNearby(n.id);
-  const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${n.lat},${n.lng}`;
   const ignored = ignoredTrailIds.has(n.id);
   return `<div class="lf-popup-name">${escHtml(n.name)}</div>
     <div class="lf-popup-meta">
@@ -1831,12 +1813,10 @@ function buildNearbyPopup(n) {
     </div>
     <div class="lf-popup-links">
       <a href="${n.url}" target="_blank" rel="noopener">TrailLink ↗</a>
-      <a href="${gmapsUrl}" target="_blank" rel="noopener">Maps ↗</a>
     </div>
     ${parkingRowsHtml(n)}
-    ${!ignored ? `<button class="lf-popup-log" id="investigate-popup-${n.id}" title="Copy a prompt for Claude to investigate/improve this trail's mapped path" onclick="copyTrailInvestigatePrompt('${n.id}')">📋 Investigate</button>` : ''}
-    <button class="lf-popup-log" id="offline-popup-${n.id}" onclick="downloadTrailForOffline('${n.id}')">${offlineDownloadedTrailIds.has(n.id) ? '✅ Offline' : '⬇️ Save Offline'}</button>
-    ${!ridden ? `<button class="lf-popup-log" onclick="logRideFromNearby('${n.id}')">+ Log a Ride</button>` : ''}`;
+    ${!ignored && !isIOS() ? `<button class="lf-popup-log" id="investigate-popup-${n.id}" title="Copy a prompt for Claude to investigate/improve this trail's mapped path" onclick="copyTrailInvestigatePrompt('${n.id}')">📋 Investigate</button>` : ''}
+    <button class="lf-popup-log" id="offline-popup-${n.id}" onclick="downloadTrailForOffline('${n.id}')">${offlineDownloadedTrailIds.has(n.id) ? '✅ Offline' : '⬇️ Save Offline'}</button>`;
 }
 
 function riddenForNearby(nearbyId) {
@@ -1967,12 +1947,6 @@ function focusNearby(id) {
   }
   marker?.openPopup();
 }
-
-// Called from popup button
-window.logRideFromNearby = function(nearbyId) {
-  map.closePopup();
-  openModalFromNearby(nearbyId);
-};
 
 // ─── Render ───────────────────────────────────────────────────────────────────
 let nearbyFilter = 'All';
@@ -2179,7 +2153,6 @@ function renderNearby() {
       html += `<div class="radius-divider"><span>Extended Range · 100–250 mi</span></div>`;
     }
     const ridden = riddenForNearby(n.id);
-    const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${n.lat},${n.lng}`;
     html += `
       <div class="nearby-card ${ridden ? 'is-ridden' : ''}">
         <div class="nearby-card-header">
@@ -2195,14 +2168,9 @@ function renderNearby() {
             <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3H3a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1V9"/><path d="M10 2h4v4"/><path d="M14 2L8 8"/></svg>
             Source
           </a>
-          <a class="link-btn" href="${gmapsUrl}" target="_blank" rel="noopener">
-            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="7" r="3"/><path d="M8 2C5.24 2 3 4.24 3 7c0 4 5 8 5 8s5-4 5-8c0-2.76-2.24-5-5-5z"/></svg>
-            Map
-          </a>
           ${parkingLinksHtml(n, 'link-btn')}
-          <button class="link-btn" id="investigate-${n.id}" title="Copy a prompt for Claude to investigate/improve this trail's mapped path" onclick="copyTrailInvestigatePrompt('${n.id}')">📋 Investigate</button>
+          ${!isIOS() ? `<button class="link-btn" id="investigate-${n.id}" title="Copy a prompt for Claude to investigate/improve this trail's mapped path" onclick="copyTrailInvestigatePrompt('${n.id}')">📋 Investigate</button>` : ''}
           ${offlineButtonHtml(n, 'offline')}
-          ${!ridden ? `<button class="log-btn" onclick="openModalFromNearby('${n.id}')">+ Log Ride</button>` : ''}
         </div>
       </div>`;
   }
@@ -3397,14 +3365,6 @@ function openModal(id = null, prefill = null) {
 
   document.getElementById('modal-overlay').classList.add('open');
   setTimeout(() => document.getElementById('f-name').focus(), 50);
-}
-
-function openModalFromNearby(nearbyId) {
-  const n = NEARBY_TRAILS.find(x=>x.id===nearbyId);
-  if (!n) return;
-  pendingNearbyId = nearbyId;
-  pendingPolyline = null;
-  openModal(null, { name: n.name, state: n.state, miles: n.miles, date: '', fromNearby: true });
 }
 
 // Candidates strong enough to be pre-checked as "this ride also covers this trail"
