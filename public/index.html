@@ -1006,8 +1006,17 @@
     }
   }
   tooltip.textContent = label;
+  badge.style.cursor = 'pointer';
   badge.addEventListener('mouseenter', () => tooltip.style.display = 'block');
   badge.addEventListener('mouseleave', () => tooltip.style.display = 'none');
+  // iOS Safari never fires mouseenter/mouseleave on a tap (no real mouse),
+  // so the hover-only tooltip above was simply unreachable there — tap to
+  // toggle instead, with the outside-tap listener closing it again.
+  badge.addEventListener('click', (e) => {
+    e.stopPropagation();
+    tooltip.style.display = tooltip.style.display === 'block' ? 'none' : 'block';
+  });
+  document.addEventListener('click', () => { tooltip.style.display = 'none'; });
 })();
 
 // ─── Nearby trail data (researched, within 100 mi of Concord MA) ──────────────
@@ -4008,10 +4017,14 @@ function exitRideMode() {
   if (!rideModeActive) return;
   rideModeActive = false;
   document.body.classList.remove('ride-mode');
-  map.zoomControl.setPosition('topleft'); // restore normal-view position
-  stopRideLocationWatch();
-  releaseWakeLock();
-  tryExitImmersiveMode();
+  // Each of these is independently non-essential — if one throws (e.g. an
+  // unexpected zoomControl/wake-lock state), it must not prevent the rest
+  // from running, especially resetRideMapLayout() below, or Ride Mode's map
+  // sizing/rotation gets stuck applied after the UI has already exited.
+  try { map.zoomControl.setPosition('topleft'); } catch (e) { console.warn('exitRideMode: zoomControl reposition failed', e); } // restore normal-view position
+  try { stopRideLocationWatch(); } catch (e) { console.warn('exitRideMode: stopRideLocationWatch failed', e); }
+  try { releaseWakeLock(); } catch (e) { console.warn('exitRideMode: releaseWakeLock failed', e); }
+  try { tryExitImmersiveMode(); } catch (e) { console.warn('exitRideMode: tryExitImmersiveMode failed', e); }
   if (rideResizeHandler) { window.removeEventListener('resize', rideResizeHandler); rideResizeHandler = null; }
   resetRideMapLayout();
 }
