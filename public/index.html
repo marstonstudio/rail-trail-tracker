@@ -110,8 +110,7 @@
 
     body.ride-mode { overflow: hidden; }
     body.ride-mode header,
-    body.ride-mode .sidebar,
-    body.ride-mode .map-legend { display: none !important; }
+    body.ride-mode .sidebar { display: none !important; }
     body.ride-mode .main { display: block; height: 100vh; }
     body.ride-mode .map-wrap {
       position: fixed;
@@ -160,6 +159,40 @@
       right: calc(14px + env(safe-area-inset-right));
       bottom: calc(14px + env(safe-area-inset-bottom));
     }
+
+    body.ride-mode .ride-compass {
+      display: flex;
+      position: absolute;
+      top: calc(14px + env(safe-area-inset-top));
+      left: calc(14px + env(safe-area-inset-left));
+      z-index: 1000;
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: rgba(26,26,26,0.72);
+      color: #fff;
+      align-items: center;
+      justify-content: center;
+    }
+    .ride-compass-needle {
+      position: absolute;
+      inset: 0;
+      transition: transform 0.35s linear;
+    }
+    .ride-compass-label {
+      position: relative;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    /* Ride Mode always rotates heading-up: #map is enlarged (via JS, to cover
+       the rotated diagonal) and rotated with CSS so travel direction always
+       points to the top of the screen. The control container is reparented
+       onto .map-wrap (see map init) so the zoom control isn't dragged along
+       with the rotation. */
+    body.ride-mode .map-wrap { overflow: hidden; }
+    body.ride-mode #map { transition: transform 0.35s linear; }
 
     .sidebar {
       background: var(--surface);
@@ -418,15 +451,34 @@
     }
     .log-btn:hover { background: #225e2c; }
 
-    /* Filter row in nearby panel */
+    /* Filter row in nearby panel — collapsed behind a toggle by default */
+    .filter-toggle-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+      padding: 8px 12px;
+      border: none;
+      border-bottom: 1px solid var(--border);
+      background: none;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .filter-toggle-btn .caret { margin-left: auto; transition: transform 0.15s; }
+    .filter-toggle-btn.expanded .caret { transform: rotate(90deg); }
+
     .nearby-filter {
       padding: 8px 10px 4px;
-      display: flex;
+      display: none;
       gap: 6px;
       flex-shrink: 0;
       border-bottom: 1px solid var(--border);
       flex-wrap: wrap;
     }
+    .nearby-filter.expanded { display: flex; }
 
     .filter-chip {
       padding: 4px 10px;
@@ -458,30 +510,6 @@
       font-size: 0.85rem;
     }
     .empty-state .empty-icon { font-size: 2rem; margin-bottom: 8px; }
-
-    /* Map legend */
-    .map-legend {
-      position: absolute;
-      bottom: 28px;
-      left: 10px;
-      z-index: 500;
-      background: white;
-      border-radius: 8px;
-      padding: 8px 12px;
-      font-size: 0.75rem;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-    }
-    .map-legend.legend-hidden { display: none; }
-    .legend-item { display: flex; align-items: center; gap: 7px; }
-    .legend-dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
 
     /* Modal */
     .modal-overlay {
@@ -842,12 +870,15 @@
 <div class="main">
   <div class="map-wrap" style="position:relative">
     <div id="map" style="width:100%;height:100%"></div>
-    <div class="map-legend">
-      <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Ridden</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div> Nearby trail</div>
-      <div class="legend-item"><div class="legend-dot" style="background:white;border:2px solid var(--blue);border-radius:4px;font:700 8px/1 sans-serif;color:var(--blue);display:flex;align-items:center;justify-content:center">P</div> Parking</div>
-    </div>
     <button class="ride-exit-btn" id="ride-exit-btn" onclick="exitRideMode()" title="Exit Ride Mode">✕</button>
+    <div class="ride-compass" id="ride-compass" title="Direction of travel">
+      <svg class="ride-compass-needle" id="ride-compass-needle" viewBox="0 0 64 64" width="64" height="64">
+        <polygon points="32,10 26,32 32,27 38,32" fill="#e04b3f"/>
+        <polygon points="32,54 26,32 32,37 38,32" fill="#cfcfcf"/>
+        <text x="32" y="9" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">N</text>
+      </svg>
+      <div class="ride-compass-label" id="ride-compass-label">—</div>
+    </div>
     <div class="ride-status" id="ride-status"></div>
   </div>
   <div class="sidebar">
@@ -867,6 +898,7 @@
       <div class="trail-list" id="list-rides"></div>
     </div>
     <div class="tab-panel" id="panel-nearby">
+      <button class="filter-toggle-btn" id="filter-toggle-btn" onclick="toggleFiltersExpanded()">🔍 Filters <span class="caret">▸</span></button>
       <div class="nearby-filter" id="surface-filter"></div>
       <div class="trail-list" id="list-nearby"></div>
     </div>
@@ -1611,7 +1643,12 @@ function genId() {
 }
 
 // ─── Map ──────────────────────────────────────────────────────────────────────
-const map = L.map('map').setView([42.45, -71.4], 8);
+// Canvas renderer (instead of Leaflet's SVG default) so trail lines/markers
+// get a real touch tap-tolerance — `tolerance: 15` extends the invisible hit
+// area 15px beyond a line's drawn stroke without changing how anything looks.
+// SVG has no equivalent option, which made tapping a thin trail line on iOS
+// (already zoomed in, finger-sized target) unreliable.
+const map = L.map('map', { renderer: L.canvas({ tolerance: 15 }) }).setView([42.45, -71.4], 8);
 
 // CartoDB Voyager instead of stock OSM tiles — keeps street names/road network
 // visible but drops the highway route-shield numbers (I-190, MA-2, etc.) baked
@@ -1626,10 +1663,12 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r
 // OpenStreetMap/CARTO text stays, since their tile usage terms require it.
 map.attributionControl.setPrefix(false);
 
-// Hide the map legend while a trail's info card (popup) is open — the two
-// otherwise overlap in the bottom-left corner.
-map.on('popupopen', () => document.querySelector('.map-legend')?.classList.add('legend-hidden'));
-map.on('popupclose', () => document.querySelector('.map-legend')?.classList.remove('legend-hidden'));
+// Reparent Leaflet's control container out of #map onto its sibling .map-wrap.
+// Ride Mode's heading-up rotation applies a CSS transform directly to #map —
+// without this, the zoom control would spin and misposition along with it.
+// Harmless in normal (non-rotated) view since .map-wrap and #map share the
+// same box there.
+if (map._controlContainer) document.querySelector('.map-wrap').appendChild(map._controlContainer);
 
 const mapLayers = {};     // trail id → ridden layer
 const nearbyMarkers = {}; // nearby id → blue marker or polyline
@@ -1696,13 +1735,20 @@ function buildRiddenPopup(t, titleName) {
   const linkedIds = [t.nearbyId, ...(t.extraNearbyIds || [])].filter(Boolean);
   const linkedTrails = linkedIds.map(id => NEARBY_TRAILS.find(n => n.id === id)).filter(Boolean);
   const links = linkedTrails.map(n => `<a href="${n.url}" target="_blank" rel="noopener">${linkedTrails.length > 1 ? escHtml(n.name) + ' ↗' : 'TrailLink ↗'}</a>`).join('');
+  // Save Offline was previously only on unridden (Nearby) cards/popups — a
+  // trail already ridden still needs its map tiles downloadable, so one
+  // button per linked trail here too (a multi-trail ride links more than one).
+  const offlineBtns = linkedTrails.map(n =>
+    `<button class="lf-popup-log" id="offline-popup-${n.id}" onclick="downloadTrailForOffline('${n.id}')">${offlineDownloadedTrailIds.has(n.id) ? '✅ Offline' : `⬇️ Save Offline${linkedTrails.length > 1 ? ' — ' + escHtml(n.name) : ''}`}</button>`
+  ).join('');
   return `<div class="lf-popup-name">${escHtml(titleName || t.name)}</div>
     <div class="lf-popup-meta">
       ${t.state ? escHtml(t.state) + ' · ' : ''}${t.miles ? t.miles + ' mi' : ''}
       ${t.date ? '<br>📅 ' + fmtDate(t.date) : ''}
       <br><span style="color:var(--green);font-weight:700">✅ Ridden</span>
     </div>
-    ${links ? `<div class="lf-popup-links">${links}</div>` : ''}`;
+    ${links ? `<div class="lf-popup-links">${links}</div>` : ''}
+    ${offlineBtns}`;
 }
 
 // For a ride that spans multiple trails (t.nearbyId + t.extraNearbyIds), figure
@@ -1918,7 +1964,36 @@ window.logRideFromNearby = function(nearbyId) {
 
 // ─── Render ───────────────────────────────────────────────────────────────────
 let nearbyFilter = 'All';
-let nearbyHideRidden = true; // on by default — surfaces what's left to ride
+let nearbyHideRidden = false; // no longer the default filter — "On Map" is (see below)
+let nearbyOnMapOnly = true; // default: only trails within the current map viewport, sorted by distance to the rider
+let filtersExpanded = false; // filter chip row is collapsed behind a toggle by default
+let userLocation = null; // {lat,lng} — one-shot geolocation fix used to sort the On Map list by proximity
+
+function isIOS() {
+  // iPadOS 13+ reports as "MacIntel" in the UA, so a touch-capable "Mac" is
+  // the real signal there — plain Macs (no touch) fall through correctly.
+  return /iP(hone|od|ad)/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function toggleFiltersExpanded() {
+  filtersExpanded = !filtersExpanded;
+  document.getElementById('surface-filter')?.classList.toggle('expanded', filtersExpanded);
+  document.getElementById('filter-toggle-btn')?.classList.toggle('expanded', filtersExpanded);
+}
+
+// One-shot fix (not a watch — this is for sorting a list, not live tracking)
+// used to sort the "On Map" nearby list by actual distance to the rider.
+// Silently no-ops on denial/timeout; the list just stays bounds-filtered but
+// unsorted-by-proximity in that case.
+function requestUserLocationForSort() {
+  if (userLocation || !navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    (pos) => { userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude }; renderNearby(); },
+    () => {},
+    { enableHighAccuracy: false, maximumAge: 300000, timeout: 10000 }
+  );
+}
 
 function render() {
   renderRides();
@@ -2043,25 +2118,39 @@ function renderRides() {
 }
 
 function renderNearby() {
-  // Build filter chips. "Unridden" sits right after "All" and looks like any
-  // other chip, but toggles independently of the surface filter rather than
-  // replacing it — both a surface and "Unridden" can be active at once.
+  // Build filter chips. "On Map" and "Unridden" sit right after "All" and
+  // look like any other chip, but each toggles independently of the surface
+  // filter and of each other rather than replacing one another.
   const surfaces = ['All', ...new Set(NEARBY_TRAILS.map(n => n.surface))];
   const filterEl = document.getElementById('surface-filter');
   filterEl.innerHTML = [
     `<button class="filter-chip ${'All' === nearbyFilter ? 'active' : ''}" onclick="setNearbyFilter('All')">All</button>`,
+    `<button class="filter-chip ${nearbyOnMapOnly ? 'active' : ''}" onclick="toggleOnMapOnly()">📍 On Map</button>`,
     `<button class="filter-chip ${nearbyHideRidden ? 'active' : ''}" onclick="toggleHideRidden()">Unridden</button>`,
     ...surfaces.slice(1).map(s =>
       `<button class="filter-chip ${s === nearbyFilter ? 'active' : ''}" onclick="setNearbyFilter('${s}')">${s}</button>`
     ),
   ].join('');
+  filterEl.classList.toggle('expanded', filtersExpanded);
+  document.getElementById('filter-toggle-btn')?.classList.toggle('expanded', filtersExpanded);
 
   const el = document.getElementById('list-nearby');
   let filtered = nearbyFilter === 'All' ? NEARBY_TRAILS : NEARBY_TRAILS.filter(n => n.surface === nearbyFilter);
   if (nearbyHideRidden) filtered = filtered.filter(n => !riddenForNearby(n.id));
+  if (nearbyOnMapOnly) {
+    const bounds = map.getBounds();
+    filtered = filtered.filter(n => bounds.contains([n.lat, n.lng]));
+    if (userLocation) {
+      filtered = [...filtered].sort((a, b) =>
+        haversineMi(userLocation.lat, userLocation.lng, a.lat, a.lng) - haversineMi(userLocation.lat, userLocation.lng, b.lat, b.lng));
+    }
+  }
 
   let html = '';
-  let shownExtHeader = false;
+  // The "Extended Range" divider assumes ascending-by-distance-from-Concord
+  // array order, which no longer holds once the On Map filter re-sorts by
+  // proximity to the rider's actual location — skip it in that case.
+  let shownExtHeader = nearbyOnMapOnly;
   for (const n of filtered) {
     if (!shownExtHeader && n.distMi > 100) {
       shownExtHeader = true;
@@ -2105,6 +2194,12 @@ function setNearbyFilter(surface) {
 
 function toggleHideRidden() {
   nearbyHideRidden = !nearbyHideRidden;
+  renderNearby();
+}
+
+function toggleOnMapOnly() {
+  nearbyOnMapOnly = !nearbyOnMapOnly;
+  if (nearbyOnMapOnly) requestUserLocationForSort();
   renderNearby();
 }
 
@@ -2274,7 +2369,7 @@ function renderMatchMap(cands) {
   const mapEl = document.getElementById('match-map');
   if (!mapEl) return;
   if (!matchMapInstance) {
-    matchMapInstance = L.map('match-map', { attributionControl: false });
+    matchMapInstance = L.map('match-map', { attributionControl: false, renderer: L.canvas({ tolerance: 15 }) });
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd' }).addTo(matchMapInstance);
   }
   matchMapLayers.forEach(l => l.remove());
@@ -3697,8 +3792,99 @@ let rideLocationMarker = null;
 let rideAccuracyCircle = null;
 let rideHasFirstFix = false;
 
+// Heading-up rotation — keeps the direction of travel pointed at the top of
+// the screen, for a phone mounted sideways on the bike (notch-left landscape,
+// so the physical "top" of the phone is the right edge). Always on in Ride
+// Mode; a compass badge (top-left) shows which way north is relative to the
+// rotated view, plus the rider's current cardinal/degree heading.
+let rideHeadingDeg = null;          // current smoothed heading, degrees clockwise from true north
+let rideLastHeadingLatLng = null;   // previous fix, for the bearing-fallback when coords.heading is unavailable
+let rideResizeHandler = null;
+const RIDE_COMPASS_DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+
 function metersToFeet(m) { return m * 3.28084; }
 function mpsToMph(mps) { return mps * 2.23694; }
+
+function bearingDeg(lat1, lng1, lat2, lng2) {
+  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+  const Δλ = (lng2 - lng1) * Math.PI / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+// Shortest signed angular distance from `a` to `b`, in (-180, 180] — lets the
+// smoothing/rotation always turn the short way instead of spinning through 350°.
+function angleDelta(a, b) { return ((b - a + 540) % 360) - 180; }
+
+function applyRideMapRotationLayout() {
+  const wrap = document.querySelector('.map-wrap');
+  const mapEl = document.getElementById('map');
+  if (!wrap || !mapEl) return;
+  // Size #map to cover the wrap's diagonal so rotating it never exposes a
+  // blank corner, then center it over the wrap via negative margins.
+  const diag = Math.ceil(Math.hypot(wrap.clientWidth, wrap.clientHeight)) + 60;
+  mapEl.style.position = 'absolute';
+  mapEl.style.left = '50%';
+  mapEl.style.top = '50%';
+  mapEl.style.width = diag + 'px';
+  mapEl.style.height = diag + 'px';
+  mapEl.style.marginLeft = (-diag / 2) + 'px';
+  mapEl.style.marginTop = (-diag / 2) + 'px';
+  map.invalidateSize({ pan: false });
+}
+
+function resetRideMapLayout() {
+  const mapEl = document.getElementById('map');
+  if (!mapEl) return;
+  mapEl.style.position = '';
+  mapEl.style.left = '';
+  mapEl.style.top = '';
+  mapEl.style.width = '100%';
+  mapEl.style.height = '100%';
+  mapEl.style.marginLeft = '';
+  mapEl.style.marginTop = '';
+  mapEl.style.transform = '';
+  map.invalidateSize({ pan: false });
+}
+
+function updateRideHeadingRotation() {
+  const mapEl = document.getElementById('map');
+  const needle = document.getElementById('ride-compass-needle');
+  const label = document.getElementById('ride-compass-label');
+  if (!mapEl) return;
+  // Rotate the map opposite the travel heading so "forward" always renders
+  // pointing up the screen (standard heading-up nav convention). The compass
+  // needle gets the same rotation, since it points at true north — a fixed
+  // direction on the map — not at the rider's own (always-up) heading.
+  const rot = rideHeadingDeg == null ? '' : `rotate(${-rideHeadingDeg}deg)`;
+  mapEl.style.transform = rot;
+  if (needle) needle.style.transform = rot;
+  if (label) {
+    label.textContent = rideHeadingDeg == null ? '—' : RIDE_COMPASS_DIRS[Math.round(rideHeadingDeg / 45) % 8];
+  }
+}
+
+function onRideHeadingSample(latitude, longitude, rawHeading) {
+  // coords.heading is only reliable while actually moving — fall back to the
+  // bearing between consecutive fixes, but only once they're far enough apart
+  // that GPS noise isn't the dominant signal in that bearing.
+  if (rawHeading == null || isNaN(rawHeading)) {
+    if (rideLastHeadingLatLng) {
+      const distM = haversineM(rideLastHeadingLatLng[0], rideLastHeadingLatLng[1], latitude, longitude);
+      if (distM > 3) rawHeading = bearingDeg(rideLastHeadingLatLng[0], rideLastHeadingLatLng[1], latitude, longitude);
+    }
+  }
+  rideLastHeadingLatLng = [latitude, longitude];
+  if (rawHeading == null || isNaN(rawHeading)) return;
+  if (rideHeadingDeg == null) {
+    rideHeadingDeg = rawHeading;
+  } else {
+    // Low-pass filter so the rotation eases rather than snapping on every fix.
+    rideHeadingDeg = (rideHeadingDeg + angleDelta(rideHeadingDeg, rawHeading) * 0.35 + 360) % 360;
+  }
+  updateRideHeadingRotation();
+}
 
 function renderRideStatus(pos, errMsg) {
   const el = document.getElementById('ride-status');
@@ -3715,8 +3901,9 @@ function renderRideStatus(pos, errMsg) {
 }
 
 function onRidePosition(pos) {
-  const { latitude, longitude, accuracy } = pos.coords;
+  const { latitude, longitude, accuracy, heading } = pos.coords;
   const latlng = [latitude, longitude];
+  onRideHeadingSample(latitude, longitude, typeof heading === 'number' ? heading : null);
   if (!rideLocationMarker) {
     rideLocationMarker = L.circleMarker(latlng, { radius: 9, color: '#fff', weight: 3, fillColor: '#2563b0', fillOpacity: 1, pane: 'markerPane' }).addTo(map);
     rideAccuracyCircle = L.circle(latlng, { radius: accuracy || 20, color: '#2563b0', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(map);
@@ -3758,6 +3945,8 @@ function stopRideLocationWatch() {
   rideWatchId = null;
   if (rideLocationMarker) { map.removeLayer(rideLocationMarker); rideLocationMarker = null; }
   if (rideAccuracyCircle) { map.removeLayer(rideAccuracyCircle); rideAccuracyCircle = null; }
+  rideHeadingDeg = null;
+  rideLastHeadingLatLng = null;
 }
 
 // Screen Wake Lock — keeps the phone from sleeping while mounted and riding.
@@ -3804,6 +3993,9 @@ function enterRideMode() {
   startRideLocationWatch();
   requestWakeLock();
   tryEnterImmersiveMode();
+  applyRideMapRotationLayout();
+  rideResizeHandler = () => applyRideMapRotationLayout();
+  window.addEventListener('resize', rideResizeHandler);
 }
 function exitRideMode() {
   if (!rideModeActive) return;
@@ -3813,7 +4005,8 @@ function exitRideMode() {
   stopRideLocationWatch();
   releaseWakeLock();
   tryExitImmersiveMode();
-  map.invalidateSize();
+  if (rideResizeHandler) { window.removeEventListener('resize', rideResizeHandler); rideResizeHandler = null; }
+  resetRideMapLayout();
 }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && rideModeActive) exitRideMode(); });
 
@@ -3826,6 +4019,15 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && rideMode
   await Promise.all([loadTrailGeometryCache(), loadIgnoredTrails(), loadTrailFailureCounts()]); // fast — hydrates trail lines from the runtime cache + ignore list + retry-cap state before first render
   render();
   renderOfflineManager();
+  // On iOS, land on Nearby (browsing trails) rather than My Rides — that's
+  // the panel most useful to open straight into on a phone.
+  if (isIOS()) switchTab('nearby');
+  if (nearbyOnMapOnly) requestUserLocationForSort();
+  // Re-filter the Nearby list to the current viewport as the rider pans/zooms
+  // — only worth the work while that tab and filter are actually active.
+  map.on('moveend', () => {
+    if (nearbyOnMapOnly && document.getElementById('panel-nearby').classList.contains('active')) renderNearby();
+  });
   // Parking pins are revealed per-trail on click (see revealParkingForTrail),
   // not rendered eagerly — keeps the map uncluttered until a rider asks for them.
   // No background Overpass sweep anymore — trail geometry lives only in the
