@@ -1202,7 +1202,7 @@ const NEARBY_TRAILS = [
     parking:[
       { name:'Cohasset MBTA Station, 110 Chief Justice Cushing Hwy, Cohasset', lat:42.2431301, lng:-70.8562976 },
     ] },
-  { id:'n109', name:'Wompatuck State Park Bike Path',        state:'MA',    miles:12,   distMi:30, surface:'Paved',         lat:42.2169, lng:-70.8639, url:'https://www.mass.gov/locations/wompatuck-state-park',                            desc:'Network of paved, car-free former WWII munitions-depot roads through the park — not a single named trail in map data, so only a partial/disconnected set of the interior loop roads is plotted; expect the real ride to cover more ground than shown',
+  { id:'n109', name:'Wompatuck State Park Bike Path',        state:'MA',    miles:12,   distMi:30, surface:'Paved',         lat:42.2169, lng:-70.8639, url:'https://map.wompy.org',                            desc:'Network of paved, car-free former WWII munitions-depot roads through the park — mapped from OSM cycleway ways within the park, verified against a real GPS ride; connects to the Whitney Spur Rail Trail at the park\'s edge',
     parking:[
       { name:'Visitor Center, 204 Union St, Hingham', lat:42.2168717, lng:-70.8639020 },
       { name:'Doane St entrance, Cohasset', lat:42.2091105, lng:-70.8192008 },
@@ -3911,25 +3911,48 @@ function onRidePosition(pos) {
   // everything (visible as the exit button/compass correctly disappearing,
   // but the map itself snapping back into its rotated ride-mode state).
   if (!rideModeActive) return;
-  const { latitude, longitude, accuracy, heading } = pos.coords;
-  const latlng = [latitude, longitude];
-  onRideHeadingSample(latitude, longitude, typeof heading === 'number' ? heading : null);
-  if (!rideLocationMarker) {
-    rideLocationMarker = L.circleMarker(latlng, { radius: 9, color: '#fff', weight: 3, fillColor: '#2563b0', fillOpacity: 1, pane: 'markerPane' }).addTo(map);
-    rideAccuracyCircle = L.circle(latlng, { radius: accuracy || 20, color: '#2563b0', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(map);
-  } else {
-    rideLocationMarker.setLatLng(latlng);
-    rideAccuracyCircle.setLatLng(latlng).setRadius(accuracy || 20);
+  // Self-healing: a single malformed/unexpected fix (or a transient
+  // Leaflet/DOM error) must not silently break Ride Mode for the rest of a
+  // long ride — e.g. a heading calculation throwing partway through would
+  // otherwise skip renderRideStatus() below it every single time going
+  // forward, which would look exactly like "the map just stopped updating"
+  // with nothing visibly wrong. Log and let the next watchPosition callback
+  // (which keeps firing regardless — clearWatch is the only way to stop it)
+  // try again fresh instead.
+  try {
+    const { latitude, longitude, accuracy, heading } = pos.coords;
+    const latlng = [latitude, longitude];
+    onRideHeadingSample(latitude, longitude, typeof heading === 'number' ? heading : null);
+    try {
+      if (!rideLocationMarker) {
+        rideLocationMarker = L.circleMarker(latlng, { radius: 9, color: '#fff', weight: 3, fillColor: '#2563b0', fillOpacity: 1, pane: 'markerPane' }).addTo(map);
+        rideAccuracyCircle = L.circle(latlng, { radius: accuracy || 20, color: '#2563b0', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(map);
+      } else {
+        rideLocationMarker.setLatLng(latlng);
+        rideAccuracyCircle.setLatLng(latlng).setRadius(accuracy || 20);
+      }
+    } catch (markerErr) {
+      // Don't leave a half-created marker/circle pair around to throw again
+      // on every future fix — tear down whatever exists and let the next
+      // fix recreate both cleanly.
+      console.warn('onRidePosition: GPS marker update failed, will recreate on next fix', markerErr);
+      if (rideLocationMarker) { try { map.removeLayer(rideLocationMarker); } catch (e) {} }
+      if (rideAccuracyCircle) { try { map.removeLayer(rideAccuracyCircle); } catch (e) {} }
+      rideLocationMarker = null;
+      rideAccuracyCircle = null;
+    }
+    if (!rideHasFirstFix) {
+      rideHasFirstFix = true;
+      map.setView(latlng, 17);
+    } else {
+      // panTo (not setView) so a rider's own zoom-out choice is preserved —
+      // only the center follows the GPS fix, not the zoom level.
+      map.panTo(latlng, { animate: true, duration: 0.5 });
+    }
+    renderRideStatus(pos, null);
+  } catch (e) {
+    console.warn('onRidePosition: skipping a fix after an unexpected error', e);
   }
-  if (!rideHasFirstFix) {
-    rideHasFirstFix = true;
-    map.setView(latlng, 17);
-  } else {
-    // panTo (not setView) so a rider's own zoom-out choice is preserved —
-    // only the center follows the GPS fix, not the zoom level.
-    map.panTo(latlng, { animate: true, duration: 0.5 });
-  }
-  renderRideStatus(pos, null);
 }
 
 function onRideLocationError(err) {
@@ -4047,8 +4070,16 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && rideMode
   if (isIOS()) switchTab('nearby');
   if (nearbyOnMapOnly) requestUserLocationForSort();
   // Re-filter the Nearby list to the current viewport as the rider pans/zooms
-  // — only worth the work while that tab and filter are actually active.
+  // — only worth the work while that tab and filter are actually active. Ride
+  // Mode's own panTo()/setView() calls also fire moveend on every GPS fix —
+  // without the rideModeActive check, a rider who happened to have the
+  // Nearby tab open before starting a ride would get a full 113-trail
+  // bounds-filter + proximity re-sort re-render on every single fix for the
+  // entire ride (the sidebar is hidden but panel-nearby can still carry its
+  // 'active' class from before Ride Mode started), compounding into a real
+  // performance problem the longer the ride runs.
   map.on('moveend', () => {
+    if (rideModeActive) return;
     if (nearbyOnMapOnly && document.getElementById('panel-nearby').classList.contains('active')) renderNearby();
   });
   // Parking pins are revealed per-trail on click (see revealParkingForTrail),
