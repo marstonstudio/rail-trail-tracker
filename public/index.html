@@ -3854,7 +3854,20 @@ function resetRideMapLayout() {
   mapEl.style.marginLeft = '';
   mapEl.style.marginTop = '';
   mapEl.style.transform = '';
+  // A same-tick invalidateSize() reads the container's offsetWidth/Height —
+  // on iOS Safari this can run before the browser has actually reflowed the
+  // just-restored layout (header/sidebar reappearing changes #map's real
+  // size too), leaving Leaflet's internal _size stuck at ride-mode's huge
+  // dimensions while the DOM itself looks normal. That desync renders tiles
+  // for a canvas far bigger than what's visible — seen as a small fragment
+  // of map in one corner with the rest blank. Defer to the next couple of
+  // paint frames so Leaflet re-measures only once the real layout has
+  // settled; a single rAF isn't always enough on iOS to guarantee that.
   map.invalidateSize({ pan: false });
+  requestAnimationFrame(() => {
+    map.invalidateSize({ pan: false });
+    requestAnimationFrame(() => map.invalidateSize({ pan: false }));
+  });
 }
 
 function updateRideHeadingRotation() {
