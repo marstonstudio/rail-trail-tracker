@@ -2151,7 +2151,17 @@ function renderNearby() {
   if (nearbyHideRidden) filtered = filtered.filter(n => !riddenForNearby(n.id));
   if (nearbyOnMapOnly) {
     const bounds = map.getBounds();
-    filtered = filtered.filter(n => bounds.contains([n.lat, n.lng]));
+    // Check the trail's actual rendered line (if its geometry is cached),
+    // not just its single declared lat/lng point — a trail whose line
+    // visibly passes through the current view but whose declared point
+    // happens to sit outside it would otherwise be wrongly excluded.
+    filtered = filtered.filter(n => {
+      const segments = TRAIL_POLYLINES?.[n.id];
+      if (segments && segments.length) {
+        return segments.some(seg => seg.some(pt => bounds.contains(pt)));
+      }
+      return bounds.contains([n.lat, n.lng]);
+    });
     if (userLocation) {
       filtered = [...filtered].sort((a, b) =>
         haversineMi(userLocation.lat, userLocation.lng, a.lat, a.lng) - haversineMi(userLocation.lat, userLocation.lng, b.lat, b.lng));
