@@ -1668,6 +1668,7 @@ if (map._controlContainer) document.querySelector('.map-wrap').appendChild(map._
 const mapLayers = {};     // trail id → ridden layer
 const nearbyMarkers = {}; // nearby id → blue marker or polyline
 const nearbyIsLine = {};  // nearby id → true once its marker has become a real polyline
+const nearbyRoadMarkers = {}; // nearby id → light-blue "on-road" polyline, only for trails with roadSegments
 
 function riddenIcon() {
   return L.divIcon({
@@ -1849,12 +1850,16 @@ function addRiddenToMap(t) {
   }
 }
 
-const NEARBY_LINE_COLOR = '#2563b0'; // matches --blue
+const NEARBY_LINE_COLOR = '#2563b0';      // matches --blue — completed, car-free rail trail
+const NEARBY_ROAD_LINE_COLOR = '#8fb8e8'; // lighter tint — on-road preferred route, not actual trail
 
 function refreshNearbyMarkers() {
   // Remove stale markers
   Object.keys(nearbyMarkers).forEach(id => {
     if (!NEARBY_TRAILS.find(n => n.id === id)) { nearbyMarkers[id].remove(); delete nearbyMarkers[id]; delete nearbyIsLine[id]; }
+  });
+  Object.keys(nearbyRoadMarkers).forEach(id => {
+    if (!NEARBY_TRAILS.find(n => n.id === id)) { nearbyRoadMarkers[id].remove(); delete nearbyRoadMarkers[id]; }
   });
 
   NEARBY_TRAILS.forEach(n => {
@@ -1894,6 +1899,21 @@ function refreshNearbyMarkers() {
       layer.setStyle({ opacity: isRidden ? 0.35 : 0.9 });
     } else {
       layer.setOpacity(isRidden ? 0.25 : 1);
+    }
+
+    // Optional lighter-blue overlay for a trail's on-road preferred-route
+    // portion(s) — a separate polyline, not part of the main (solid-blue,
+    // actual-trail) line, so the distinction stays visible at a glance.
+    const roadSegments = TRAIL_ROAD_POLYLINES?.[n.id];
+    if (roadSegments && roadSegments.length) {
+      if (!nearbyRoadMarkers[n.id]) {
+        nearbyRoadMarkers[n.id] = L.polyline(roadSegments, { color: NEARBY_ROAD_LINE_COLOR, weight: 5, opacity: 0.9, lineCap: 'round' })
+          .addTo(map).bindPopup(buildNearbyPopup(n), { maxWidth: 220 });
+      }
+      nearbyRoadMarkers[n.id].setStyle({ opacity: isRidden ? 0.3 : 0.9 });
+    } else if (nearbyRoadMarkers[n.id]) {
+      nearbyRoadMarkers[n.id].remove();
+      delete nearbyRoadMarkers[n.id];
     }
   });
 }
@@ -2456,6 +2476,12 @@ const DISCOVER_MIN_SCORE  = 0.20; // ≥20% overlap → surface as a discovered 
 // on-demand via Overpass, hydrated from the server's persistent cache at
 // startup so the (slow) Overpass lookups only ever need to happen once.
 let TRAIL_POLYLINES = null;
+// Parallel cache for the optional "on-road preferred route" portion of a
+// trail (e.g. a rail-trail with a short on-road detour/connector) — same
+// {[nearbyTrailId]: [[[lat,lng],...],...]} shape as TRAIL_POLYLINES, drawn
+// as a second, lighter-colored polyline. Populated only via manual curation
+// (see CLAUDE.md "Road vs. completed-trail segments") — never auto-fetched.
+let TRAIL_ROAD_POLYLINES = null;
 // OSM trails found near the current FIT track that aren't in NEARBY_TRAILS.
 let pendingDiscovered = [];
 // Set of quantised bbox keys we've already queried this session (avoid re-fetching).
@@ -2478,9 +2504,13 @@ async function loadTrailGeometryCache() {
     if (!res.ok) return;
     const data = await res.json();
     if (!TRAIL_POLYLINES) TRAIL_POLYLINES = {};
+    if (!TRAIL_ROAD_POLYLINES) TRAIL_ROAD_POLYLINES = {};
     for (const [id, entry] of Object.entries(data)) {
       if (entry && entry.version === TRAIL_GEOM_LOGIC_VERSION && Array.isArray(entry.segments)) {
         TRAIL_POLYLINES[id] = entry.segments;
+        if (Array.isArray(entry.roadSegments) && entry.roadSegments.length) {
+          TRAIL_ROAD_POLYLINES[id] = entry.roadSegments;
+        }
       }
       // else: stale (old/legacy format, or older logic version) — left
       // uncached; no automatic re-fetch anymore, see "📋 Investigate".
