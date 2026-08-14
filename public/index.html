@@ -3850,6 +3850,107 @@ function resetRideMapLayout() {
   });
 }
 
+// ─── Orientation-lock compensation ─────────────────────────────────────────
+// iOS Safari has no orientation-lock API (see tryEnterImmersiveMode above),
+// and on a real device the OS can briefly report portrait mid-ride even
+// though the phone stays mounted the same way — observed as Ride Mode's
+// whole layout flipping for a few minutes before flipping back. Since we
+// can't stop the OS from doing that, this counter-rotates .map-wrap (the
+// entire Ride Mode UI — map, exit button, compass, status readout, all as
+// one rigid block) to keep it always looking like a fixed target
+// orientation, not just "whatever it happened to be when Ride Mode
+// started" (which only works if the rider is already correctly mounted at
+// that exact instant).
+//
+// The rider always mounts the phone with the notch/camera cutout on the
+// physical left — on iOS that's the standard 'landscape-primary'
+// orientation, so that's the fixed target rather than a captured baseline.
+const ORIENTATION_TYPE_ANGLE = {
+  'portrait-primary': 0, 'landscape-primary': 90,
+  'portrait-secondary': 180, 'landscape-secondary': 270,
+};
+const RIDE_TARGET_ANGLE = ORIENTATION_TYPE_ANGLE['landscape-primary'];
+let rideOrientationHandler = null;
+
+function currentScreenAngle() {
+  const type = screen.orientation && screen.orientation.type;
+  if (type && ORIENTATION_TYPE_ANGLE[type] != null) return ORIENTATION_TYPE_ANGLE[type];
+  // Fall back to the raw angle if .type is unavailable — less reliable
+  // (its 0-reference isn't guaranteed to line up with our type-based
+  // mapping above) but better than no compensation at all.
+  return (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : null;
+}
+
+function applyOrientationCompensation() {
+  if (!rideModeActive) return;
+  const wrap = document.querySelector('.map-wrap');
+  if (!wrap) return;
+  try {
+    const current = currentScreenAngle();
+    const diff = current == null ? 0 : ((RIDE_TARGET_ANGLE - current) % 360 + 360) % 360;
+    if (diff === 0) {
+      wrap.style.position = '';
+      wrap.style.top = '';
+      wrap.style.left = '';
+      wrap.style.right = '';
+      wrap.style.bottom = '';
+      wrap.style.width = '';
+      wrap.style.height = '';
+      wrap.style.marginLeft = '';
+      wrap.style.marginTop = '';
+      wrap.style.transform = '';
+    } else if (diff === 180) {
+      wrap.style.position = 'fixed';
+      wrap.style.top = '0';
+      wrap.style.left = '0';
+      wrap.style.right = 'auto';
+      wrap.style.bottom = 'auto';
+      wrap.style.width = '100vw';
+      wrap.style.height = '100vh';
+      wrap.style.marginLeft = '';
+      wrap.style.marginTop = '';
+      wrap.style.transform = 'rotate(180deg)';
+    } else {
+      // A quarter turn (90/270) — the OS has swapped which physical edges
+      // are "top"/"left", so the compensated box needs landscape↔portrait
+      // dimensions swapped too, then rotated back into place and centered.
+      const vw = window.innerWidth, vh = window.innerHeight;
+      wrap.style.position = 'fixed';
+      wrap.style.top = '50%';
+      wrap.style.left = '50%';
+      wrap.style.right = 'auto';
+      wrap.style.bottom = 'auto';
+      wrap.style.width = vh + 'px';
+      wrap.style.height = vw + 'px';
+      wrap.style.marginLeft = (-vh / 2) + 'px';
+      wrap.style.marginTop = (-vw / 2) + 'px';
+      wrap.style.transform = `rotate(${diff}deg)`;
+    }
+    // .map-wrap's box just changed size — #ride-map-frame's diagonal-cover
+    // sizing and the heading-up rotation both key off that box, so re-apply.
+    applyRideMapRotationLayout();
+    updateRideHeadingRotation();
+    map.invalidateSize({ pan: false });
+  } catch (e) {
+    console.warn('applyOrientationCompensation failed', e);
+  }
+}
+
+function resetOrientationCompensation() {
+  const wrap = document.querySelector('.map-wrap');
+  if (!wrap) return;
+  wrap.style.position = '';
+  wrap.style.top = '';
+  wrap.style.left = '';
+  wrap.style.right = '';
+  wrap.style.bottom = '';
+  wrap.style.width = '';
+  wrap.style.height = '';
+  wrap.style.marginLeft = '';
+  wrap.style.marginTop = '';
+  wrap.style.transform = '';
+}
+
 function updateRideHeadingRotation() {
   const frame = document.getElementById('ride-map-frame');
   const needle = document.getElementById('ride-compass-needle');
@@ -4034,8 +4135,16 @@ function enterRideMode() {
   startRideLocationWatch();
   requestWakeLock();
   tryEnterImmersiveMode();
-  applyRideMapRotationLayout();
-  rideResizeHandler = () => applyRideMapRotationLayout();
+  // Keep the whole Ride Mode UI matching the fixed notch-left target
+  // orientation — see applyOrientationCompensation() above.
+  rideOrientationHandler = () => applyOrientationCompensation();
+  if (screen.orientation && screen.orientation.addEventListener) {
+    screen.orientation.addEventListener('change', rideOrientationHandler);
+  } else {
+    window.addEventListener('orientationchange', rideOrientationHandler);
+  }
+  applyOrientationCompensation(); // also lays out #ride-map-frame (diff is 0 at this point)
+  rideResizeHandler = () => applyOrientationCompensation();
   window.addEventListener('resize', rideResizeHandler);
 }
 function exitRideMode() {
@@ -4051,6 +4160,14 @@ function exitRideMode() {
   try { releaseWakeLock(); } catch (e) { console.warn('exitRideMode: releaseWakeLock failed', e); }
   try { tryExitImmersiveMode(); } catch (e) { console.warn('exitRideMode: tryExitImmersiveMode failed', e); }
   if (rideResizeHandler) { window.removeEventListener('resize', rideResizeHandler); rideResizeHandler = null; }
+  if (rideOrientationHandler) {
+    try {
+      if (screen.orientation && screen.orientation.removeEventListener) screen.orientation.removeEventListener('change', rideOrientationHandler);
+      else window.removeEventListener('orientationchange', rideOrientationHandler);
+    } catch (e) { console.warn('exitRideMode: orientation listener removal failed', e); }
+    rideOrientationHandler = null;
+  }
+  resetOrientationCompensation();
   resetRideMapLayout();
   lastRideModeExitAt = Date.now();
 }
