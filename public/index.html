@@ -1173,6 +1173,10 @@ const NEARBY_TRAILS = [
       { name:'Margaret St lot, Arlington',             lat:42.4027239, lng:-71.1467090 },
       { name:'Alewife Station garage, Cambridge',      lat:42.3960020, lng:-71.1412774 },
     ] },
+  { id:'n118', name:'Narrow Gauge Rail Trail',                state:'MA',    miles:3,    distMi:5,  surface:'Paved',         lat:42.507, lng:-71.278, url:'https://bedforddepot.org/rail-trails/',                                            desc:'Built 1877 by the Billerica and Bedford Railroad as a showcase of narrow-gauge rail technology, running north from Bedford Depot Park (shared hub with the Minuteman Bikeway, ~0.1mi road link, and the Reformatory Branch Trail, ~0.4mi road link) toward Billerica, where it comes within half a mile of the planned/under-construction Yankee Doodle Bike Path',
+    parking:[
+      { name:'Bedford Depot Park, Loomis St, Bedford', lat:42.4878782, lng:-71.2738916 },
+    ] },
   { id:'n95', name:'Somerville Community Path',              state:'MA',    miles:3.2,  distMi:8,  surface:'Paved',          lat:42.395, lng:-71.118, url:'https://www.traillink.com/trail/somerville-community-path/',                   desc:'Former Fitchburg Cutoff corridor linking Alewife to East Cambridge through Davis Square with direct access to Green and Red Line stations',
     parking:[
       { name:'Alewife Linear Park, Cambridge', lat:42.3978200, lng:-71.1319826 },
@@ -1195,6 +1199,10 @@ const NEARBY_TRAILS = [
     parking:[
       { name:'Gateway Center lot, Everett',        lat:42.3987003, lng:-71.0705426 },
       { name:'Rt 60 lot near Malden High, Malden', lat:42.4267650, lng:-71.0650665 },
+    ] },
+  { id:'n119', name:'Lynn Shore & Nahant Beach Promenade',    state:'MA',    miles:2.9,  distMi:22, surface:'Paved',         lat:42.459, lng:-70.927, url:'https://www.mass.gov/locations/lynn-shore-nahant-beach-reservation', desc:'DCR-managed paved promenade atop the seawall from Swampscott (near Fisherman\'s Beach) through Lynn Shore (Red Rock Park, King\'s Beach) to Nahant Beach — about 2mi from the east end of the Northern Strand Community Trail through city streets, not directly connected. The real path runs on the seawall separate from the road, but isn\'t digitized as its own way in OSM, so the map line here approximates it via the adjacent street route (Lynn Shore Drive/Nahant Road) — expect it to run slightly inland of the true shorefront path in places.',
+    parking:[
+      { name:'Nahant Beach DCR lot, 1 Nahant Rd, Nahant', lat:42.4546042, lng:-70.9380063 },
     ] },
   { id:'n05', name:'Tri-Community Greenway',                 state:'MA',    miles:6.5,  distMi:15, surface:'Paved',         lat:42.476, lng:-71.133, url:'https://www.traillink.com/trail/tri-community-greenway/',                          desc:'Stoneham to Woburn through Winchester',
     parking:[
@@ -1246,13 +1254,23 @@ const NEARBY_TRAILS = [
       { name:'Court St lot, Groton',               lat:42.6079074, lng:-71.5735685 },
       { name:'Hollis St lot, Dunstable',           lat:42.7023003, lng:-71.5391957 },
     ] },
-  { id:'n08', name:'Windham Rail Trail',                     state:'NH',    miles:5.3,  distMi:24, surface:'Paved',         lat:42.812, lng:-71.303, url:'https://www.traillink.com/trail/windham-rail-trail/',                             desc:'Scenic paved trail through Windham, NH',
+  { id:'n08', name:'Windham Rail Trail',                     state:'NH',    miles:5.3,  distMi:24, surface:'Paved',         lat:42.812, lng:-71.303, url:'https://www.traillink.com/trail/windham-rail-trail/',                             desc:'Scenic paved trail through Windham, NH — connects directly (no gap) to the Salem Bike-Ped Corridor at its south end and the Derry Rail Trail at its north end',
     parking:[
       { name:'Windham Depot lot, 6 Depot Rd, Windham', lat:42.8423506, lng:-71.2983744 },
     ] },
   { id:'n09', name:'Salem Bike-Ped Corridor',                state:'NH',    miles:5.2,  distMi:24, surface:'Paved/Gravel',  lat:42.786, lng:-71.240, url:'https://fsbpc.org',                                                              desc:'Salem to Windham NH — 2 miles paved, rest crushed stone',
     parking:[
       { name:'Range Rd lot near Salem-Windham line', lat:42.7845655, lng:-71.2945741 },
+    ] },
+  { id:'n116', name:'Derry Rail Trail',                      state:'NH',    miles:3.6,  distMi:28, surface:'Paved',         lat:42.870, lng:-71.321, url:'https://derryrailtrail.org/',                                                      desc:'Downtown Derry along the former Boston & Maine Manchester-Lawrence branch, connecting directly (no gap) to the Windham Rail Trail at its south end; the planned northern extension to the Londonderry Rail Trail is blocked by the I-93 Exit 4A project and not expected before 2028+',
+    parking:[
+      { name:'Derry Municipal Center, 14 Manning St, Derry', lat:42.8818556, lng:-71.3269886 },
+      { name:'Hood Park, Derry', lat:42.8853443, lng:-71.3293015 },
+    ] },
+  { id:'n117', name:'Londonderry Rail Trail',                state:'NH',    miles:4.5,  distMi:31, surface:'Paved',         lat:42.915, lng:-71.384, url:'https://londonderrytrails.org/about-the-rail-trail/',                             desc:'Manchester to Londonderry along the former Boston & Maine Manchester-Lawrence branch, past ponds and wetlands; currently an isolated segment — the planned connection south to the Derry Rail Trail is blocked by the I-93 Exit 4A project and not expected before 2028+',
+    parking:[
+      { name:'Exit 5 Park & Ride, 4 Symmes Dr, Londonderry', lat:42.9177258, lng:-71.3772768 },
+      { name:'106 Harvey Rd, Londonderry', lat:42.9169781, lng:-71.4229103 },
     ] },
   { id:'n62', name:'Danvers Rail Trail',                     state:'MA',    miles:2.6,  distMi:24, surface:'Paved',         lat:42.574, lng:-70.937, url:'https://www.traillink.com/trail/danvers-rail-trail/',                          desc:'Danvers to Beverly along a former rail corridor on the north shore',
     parking:[
@@ -1267,6 +1285,10 @@ const NEARBY_TRAILS = [
   { id:'n94', name:'Marblehead Rail Trail',                  state:'MA',    miles:3.3,  distMi:27, surface:'Paved/Gravel',   lat:42.500, lng:-70.895, url:'https://www.traillink.com/trail/marblehead-rail-trail/',                     desc:'Y-shaped former Eastern Railroad spur (1839) connecting Marblehead, Salem, and Swampscott; part of the developing Border to Boston Trail and East Coast Greenway',
     parking:[
       { name:'Bessom St lot, Marblehead', lat:42.5006451, lng:-70.8595098 },
+    ] },
+  { id:'n120', name:'Independence Greenway',                 state:'MA',    miles:4.6,  distMi:20, surface:'Paved',         lat:42.554, lng:-70.985, url:'https://peabody-ma.gov/greenway-projects.html',                                    desc:'Two paved Peabody segments through the Norris Brook, Crystal Lake, and Ipswich River watershed conservation areas — a 2.9mi West Peabody stretch and a 1.7mi eastern stretch, linked by about 1.5mi of local streets (no dedicated connector yet)',
+    parking:[
+      { name:'Lt. Ross Park, West Peabody', lat:42.5457952, lng:-70.9914847 },
     ] },
   { id:'n10', name:'Potanipo Rail Trail',                    state:'NH',    miles:6.5,  distMi:25, surface:'Gravel',        lat:42.729, lng:-71.665, url:'https://plcnh.org/potanipo-rail-trail/',                                          desc:'Brookline to Hollis through quiet southern NH countryside',
     parking:[
@@ -1379,6 +1401,12 @@ const NEARBY_TRAILS = [
     parking:[
       { name:'Cushing Park, Newburyport', lat:42.8129842, lng:-70.8807427 },
       { name:'Cashman Park, Newburyport', lat:42.8165776, lng:-70.8783718 },
+    ] },
+  { id:'n115', name:'Coastal Trails Network — Amesbury/Salisbury',  state:'MA',  miles:10.6, distMi:35, surface:'Paved/Stone dust', lat:42.840, lng:-70.895, url:'https://coastaltrailscoalition.org/', desc:'Amesbury Riverwalk, William Lloyd Garrison Trail (crossing the Merrimack via the Whittier Bridge), Gloria Braunhardt Bike Path, and the Salisbury Point Ghost Trail linked to the Old Eastern Marsh Trail — all short trails a short on-road ride apart, connecting near Lions Park to the Clipper City Rail Trail. Manually-curated geometry combining 5 named trails plus real on-road connectors — no osmNames alias on purpose, since auto-matching against just one of the 5 underlying trail names would overwrite this combined geometry with a single fragment.',
+    parking:[
+      { name:'Lower Millyard Parking Deck, Amesbury', lat:42.8570851, lng:-70.9285123 },
+      { name:'Lions Park, Salisbury', lat:42.8451641, lng:-70.8641695 },
+      { name:'Ferry Road, Newburyport', lat:42.8285767, lng:-70.9112060 },
     ] },
   { id:'n66', name:'Hanover Branch Rail Trail',              state:'MA',    miles:3.4,  distMi:34, surface:'Paved/Gravel',   lat:42.120, lng:-70.880, url:'https://www.traillink.com/trail/hanover-branch-rail-trail/',                     desc:'Forested rail-trail south of Boston on the 1860s Hanover Branch Line, connecting Abington and Rockland along French Stream',
     parking:[
