@@ -119,14 +119,17 @@
       height: 100vh;
       z-index: 10;
     }
+    /* Exit button, compass, and record button are all the same size/shape —
+       a consistent row of circular controls rather than mismatched sizes. */
+    :root { --ride-btn-size: 56px; }
     body.ride-mode .ride-exit-btn {
       display: flex;
       position: absolute;
       top: calc(14px + env(safe-area-inset-top));
       right: calc(14px + env(safe-area-inset-right));
       z-index: 1000;
-      width: 46px;
-      height: 46px;
+      width: var(--ride-btn-size);
+      height: var(--ride-btn-size);
       border-radius: 50%;
       background: rgba(26,26,26,0.72);
       color: #fff;
@@ -137,34 +140,21 @@
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
     }
-    body.ride-mode .ride-status {
-      display: block;
-      position: absolute;
-      bottom: calc(14px + env(safe-area-inset-bottom));
-      left: calc(14px + env(safe-area-inset-left));
-      z-index: 1000;
-      background: rgba(255,255,255,0.94);
-      padding: 8px 14px;
-      border-radius: 10px;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text);
-      box-shadow: 0 2px 10px rgba(0,0,0,.2);
-      line-height: 1.5;
-      max-width: min(70vw, 320px);
-    }
+    /* The speed/accuracy readout was dropped from Ride Mode — not useful
+       enough to justify the screen space, per rider feedback. */
+    .ride-status { display: none !important; }
     .ride-status .ride-status-error { color: #b0272d; font-weight: 700; }
 
     body.ride-mode .ride-note-btn {
       display: flex;
       position: absolute;
-      right: calc(14px + env(safe-area-inset-right));
-      bottom: calc(84px + env(safe-area-inset-bottom));
+      left: calc(14px + env(safe-area-inset-left));
+      bottom: calc(14px + env(safe-area-inset-bottom));
       z-index: 1000;
-      min-width: 52px;
-      height: 52px;
-      padding: 0 10px;
-      border-radius: 26px;
+      width: var(--ride-btn-size);
+      height: var(--ride-btn-size);
+      padding: 0;
+      border-radius: 50%;
       background: rgba(26,26,26,0.72);
       color: #fff;
       border: none;
@@ -177,7 +167,7 @@
     }
     body.ride-mode .ride-note-btn.recording {
       background: #b0272d;
-      font-size: 15px;
+      font-size: 14px;
       animation: ride-note-pulse 1.2s ease-in-out infinite;
     }
     @keyframes ride-note-pulse {
@@ -290,6 +280,14 @@
       right: calc(14px + env(safe-area-inset-right));
       bottom: calc(14px + env(safe-area-inset-bottom));
     }
+    /* Bigger zoom buttons in Ride Mode — a phone mounted on the bike and
+       glanced at mid-ride needs a larger touch target than the default. */
+    body.ride-mode .leaflet-bottom.leaflet-right .leaflet-control-zoom a {
+      width: 44px;
+      height: 44px;
+      line-height: 44px;
+      font-size: 22px;
+    }
 
     body.ride-mode .ride-compass {
       display: flex;
@@ -297,8 +295,8 @@
       top: calc(14px + env(safe-area-inset-top));
       left: calc(14px + env(safe-area-inset-left));
       z-index: 1000;
-      width: 64px;
-      height: 64px;
+      width: var(--ride-btn-size);
+      height: var(--ride-btn-size);
       border-radius: 50%;
       background: rgba(26,26,26,0.72);
       color: #fff;
@@ -1005,7 +1003,7 @@
     </div>
     <button class="ride-exit-btn" id="ride-exit-btn" onclick="exitRideMode()" title="Exit Ride Mode">✕</button>
     <div class="ride-compass" id="ride-compass" title="Direction of travel">
-      <svg class="ride-compass-needle" id="ride-compass-needle" viewBox="0 0 64 64" width="64" height="64">
+      <svg class="ride-compass-needle" id="ride-compass-needle" viewBox="0 0 64 64" width="100%" height="100%">
         <polygon points="32,10 26,32 32,27 38,32" fill="#e04b3f"/>
         <polygon points="32,54 26,32 32,37 38,32" fill="#cfcfcf"/>
         <text x="32" y="9" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">N</text>
