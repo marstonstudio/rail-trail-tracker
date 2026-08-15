@@ -14,6 +14,8 @@ const FITS_DIR   = path.join(path.dirname(RIDES_FILE), 'fits');
 const TRAIL_GEOM_DIR = path.join(path.dirname(RIDES_FILE), 'trail-geometry');
 const IGNORED_TRAILS_FILE = path.join(path.dirname(RIDES_FILE), 'ignored-trails.json');
 const FETCH_FAILURES_FILE = path.join(path.dirname(RIDES_FILE), 'trail-fetch-failures.json');
+const RIDE_NOTES_FILE = path.join(path.dirname(RIDES_FILE), 'ride-notes.json');
+const RIDE_NOTES_AUDIO_DIR = path.join(path.dirname(RIDES_FILE), 'ride-notes-audio');
 const SAFE_KEY   = /^[a-zA-Z0-9_-]{1,80}$/;
 
 // ── Build metadata stamped into HTML at startup ───────────────────────────────
@@ -164,6 +166,60 @@ app.post('/api/trail-fetch-failures', (req, res) => {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return res.status(400).json({ error: 'Expected an object' });
   ensureDir(FETCH_FAILURES_FILE);
   fs.writeFileSync(FETCH_FAILURES_FILE, JSON.stringify(data, null, 2));
+  res.json({ ok: true });
+});
+
+// ── GET /api/ride-notes — list of Ride Mode trail-issue voice notes ──────────
+// { id, lat, lng, timestamp, durationSec, mimeType } — the raw audio itself
+// lives separately under RIDE_NOTES_AUDIO_DIR, fetched on demand for playback.
+app.get('/api/ride-notes', (req, res) => {
+  if (!fs.existsSync(RIDE_NOTES_FILE)) return res.json([]);
+  try {
+    const data = JSON.parse(fs.readFileSync(RIDE_NOTES_FILE, 'utf8'));
+    res.json(Array.isArray(data) ? data : []);
+  } catch { res.json([]); }
+});
+
+// ── POST /api/ride-notes — save the full notes-metadata array ────────────────
+app.post('/api/ride-notes', (req, res) => {
+  const notes = req.body;
+  if (!Array.isArray(notes)) return res.status(400).json({ error: 'Expected array' });
+  ensureDir(RIDE_NOTES_FILE);
+  fs.writeFileSync(RIDE_NOTES_FILE, JSON.stringify(notes, null, 2));
+  res.json({ ok: true, count: notes.length });
+});
+
+// ── POST /api/ride-notes-audio/:key — store one note's raw audio recording ───
+app.post('/api/ride-notes-audio/:key', express.raw({ type: () => true, limit: '20mb' }), (req, res) => {
+  const key = req.params.key;
+  if (!SAFE_KEY.test(key)) return res.status(400).json({ error: 'Invalid key' });
+  if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'Empty body' });
+  if (!fs.existsSync(RIDE_NOTES_AUDIO_DIR)) fs.mkdirSync(RIDE_NOTES_AUDIO_DIR, { recursive: true });
+  fs.writeFileSync(path.join(RIDE_NOTES_AUDIO_DIR, key), req.body);
+  res.json({ ok: true });
+});
+
+// ── GET /api/ride-notes-audio/:key — retrieve one note's raw audio recording ─
+// Served as opaque bytes — the client already knows the note's mimeType from
+// its /api/ride-notes metadata entry and wraps the response in a Blob of that
+// type itself, so this endpoint doesn't need to track content-type per file.
+app.get('/api/ride-notes-audio/:key', (req, res) => {
+  const key = req.params.key;
+  if (!SAFE_KEY.test(key)) return res.status(400).json({ error: 'Invalid key' });
+  const filePath = path.join(RIDE_NOTES_AUDIO_DIR, key);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
+  res.type('application/octet-stream').send(fs.readFileSync(filePath));
+});
+
+// ── DELETE /api/ride-notes-audio/:key — remove one note's audio recording ────
+// Notes are capped client-side at 10 (see RIDE_NOTE_MAX_COUNT) and deleted
+// after the rider has reviewed/actioned them, so this keeps the audio
+// directory from accumulating orphaned files as old notes roll off.
+app.delete('/api/ride-notes-audio/:key', (req, res) => {
+  const key = req.params.key;
+  if (!SAFE_KEY.test(key)) return res.status(400).json({ error: 'Invalid key' });
+  const filePath = path.join(RIDE_NOTES_AUDIO_DIR, key);
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   res.json({ ok: true });
 });
 

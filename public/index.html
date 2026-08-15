@@ -106,7 +106,7 @@
 
     #map { width: 100%; height: 100%; z-index: 0; }
 
-    .ride-exit-btn, .ride-status, .ride-compass { display: none; }
+    .ride-exit-btn, .ride-status, .ride-compass, .ride-note-btn, .ride-note-toast { display: none; }
 
     body.ride-mode { overflow: hidden; }
     body.ride-mode header,
@@ -154,6 +154,137 @@
       max-width: min(70vw, 320px);
     }
     .ride-status .ride-status-error { color: #b0272d; font-weight: 700; }
+
+    body.ride-mode .ride-note-btn {
+      display: flex;
+      position: absolute;
+      right: calc(14px + env(safe-area-inset-right));
+      bottom: calc(84px + env(safe-area-inset-bottom));
+      z-index: 1000;
+      min-width: 52px;
+      height: 52px;
+      padding: 0 10px;
+      border-radius: 26px;
+      background: rgba(26,26,26,0.72);
+      color: #fff;
+      border: none;
+      font-size: 22px;
+      font-weight: 700;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body.ride-mode .ride-note-btn.recording {
+      background: #b0272d;
+      font-size: 15px;
+      animation: ride-note-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes ride-note-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(176,39,45,0.55); }
+      50% { box-shadow: 0 0 0 10px rgba(176,39,45,0); }
+    }
+    body.ride-mode .ride-note-toast {
+      display: block;
+      position: absolute;
+      top: calc(14px + env(safe-area-inset-top));
+      left: 50%;
+      transform: translateX(-50%) translateY(-8px);
+      z-index: 1001;
+      background: rgba(26,26,26,0.85);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+    .ride-note-toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .ride-note-toast.is-error { background: rgba(176,39,45,0.92); }
+
+    /* ── Trail Notes review modal (main screen, not Ride Mode) ────────────────── */
+    .ride-notes-modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .ride-notes-modal-backdrop.visible { display: flex; }
+    .ride-notes-modal {
+      background: var(--surface);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 560px;
+      max-height: 82vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 8px 32px rgba(0,0,0,.3);
+    }
+    .ride-notes-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 18px 4px;
+    }
+    .ride-notes-modal-header h2 { font-size: 1.05rem; margin: 0; }
+    .ride-notes-modal-close {
+      border: none;
+      background: none;
+      font-size: 18px;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+    .ride-notes-modal-sub {
+      padding: 0 18px 12px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    .ride-notes-list { overflow-y: auto; flex: 1; padding: 10px 14px; }
+    .ride-notes-empty { padding: 30px 10px; text-align: center; color: var(--muted); font-size: 0.85rem; }
+    .ride-note-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 11px 13px;
+      margin-bottom: 10px;
+    }
+    .ride-note-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .ride-note-card-when { font-weight: 600; font-size: 0.86rem; }
+    .ride-note-card-dur { font-size: 0.76rem; color: var(--muted); white-space: nowrap; }
+    .ride-note-card-context { font-size: 0.78rem; color: var(--muted); margin-bottom: 8px; }
+    .ride-note-card-context a { color: var(--green); text-decoration: none; }
+    .ride-note-card audio { width: 100%; height: 32px; margin-bottom: 8px; }
+    .ride-note-card-actions { display: flex; justify-content: flex-end; }
+    .ride-note-card-delete {
+      font-size: 0.72rem;
+      padding: 4px 10px;
+      border: 1px solid #fdd;
+      border-radius: 5px;
+      background: none;
+      color: #c44;
+      cursor: pointer;
+    }
+    .ride-note-card-delete:hover { background: #fee; border-color: #fbb; }
+    .ride-notes-modal-footer {
+      padding: 10px 18px calc(14px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+    }
 
     body.ride-mode .leaflet-bottom.leaflet-right {
       right: calc(14px + env(safe-area-inset-right));
@@ -841,6 +972,9 @@
     <div><span class="stat-val" id="stat-nearby-done">0</span> / <span id="stat-nearby-total">17</span> nearby ridden</div>
   </div>
   <div class="header-actions">
+    <button class="import-btn" id="ride-notes-open-btn" onclick="openRideNotesModal()" style="display:none">
+      🎙️ Notes <span id="ride-notes-count-badge"></span>
+    </button>
     <button class="import-btn" onclick="document.getElementById('fit-input').click()">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1v9M4 6l4 4 4-4"/><path d="M2 12v2h12v-2"/></svg>
       Import<span class="lbl-ext"> FIT</span>
@@ -849,6 +983,20 @@
   </div>
   <input type="file" id="fit-input" accept=".fit" multiple style="display:none" onchange="handleFitInput(this)" />
 </header>
+
+<div class="ride-notes-modal-backdrop" id="ride-notes-modal-backdrop" onclick="if(event.target===this) closeRideNotesModal()">
+  <div class="ride-notes-modal">
+    <div class="ride-notes-modal-header">
+      <h2>🎙️ Trail Notes</h2>
+      <button class="ride-notes-modal-close" onclick="closeRideNotesModal()">✕</button>
+    </div>
+    <div class="ride-notes-modal-sub">Recorded during rides to flag map issues to fix later — max 10, oldest auto-removed. Delete a note once you've acted on it.</div>
+    <div class="ride-notes-list" id="ride-notes-list"></div>
+    <div class="ride-notes-modal-footer">
+      <button class="reset-btn" id="ride-notes-clear-all" onclick="clearAllRideNotes()">Delete all</button>
+    </div>
+  </div>
+</div>
 
 <div class="main">
   <div class="map-wrap" style="position:relative">
@@ -865,6 +1013,8 @@
       <div class="ride-compass-label" id="ride-compass-label">—</div>
     </div>
     <div class="ride-status" id="ride-status"></div>
+    <button class="ride-note-btn" id="ride-note-btn" onclick="toggleRideNoteRecording()" title="Record a trail note (max 60s)">🎙️</button>
+    <div class="ride-note-toast" id="ride-note-toast"></div>
   </div>
   <div class="sidebar">
     <div class="sidebar-tabs">
@@ -3806,12 +3956,244 @@ let rideLocationMarker = null;
 let rideAccuracyCircle = null;
 let rideHasFirstFix = false;
 
+// Ride Mode voice notes — a rider can flag a trail-map issue on the spot
+// (bad geometry, missing parking, closed trail, etc.) without stopping to
+// type. Recorded audio + the GPS fix/timestamp at record time are stored
+// server-side for later review — see /api/ride-notes* in server.js.
+const RIDE_NOTE_MAX_SEC = 60;
+const RIDE_NOTE_MAX_COUNT = 10;
+let rideNotes = [];               // hydrated from /api/ride-notes at startup
+let rideNoteRecorder = null;      // active MediaRecorder, or null when idle
+let rideNoteStream = null;        // the mic MediaStream, kept so it can be stopped on save/cancel
+let rideNoteChunks = [];
+let rideNoteStartedAt = null;     // Date, captured when recording starts
+let rideNoteStartLatLng = null;   // [lat, lng] captured when recording starts
+let rideNoteTimerHandle = null;
+let rideNoteAutoStopHandle = null;
+
+async function loadRideNotes() {
+  try {
+    const res = await fetch('/api/ride-notes');
+    rideNotes = await res.json();
+  } catch (e) { console.warn('Could not load ride notes:', e.message); rideNotes = []; }
+}
+
+function pickRideNoteMimeType() {
+  // iOS Safari's MediaRecorder doesn't support audio/webm at all — feature
+  // detect rather than hardcoding one format.
+  const candidates = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/aac', 'audio/ogg'];
+  for (const t of candidates) {
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return '';
+}
+
+function showRideNoteToast(msg, isError) {
+  const el = document.getElementById('ride-note-toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.toggle('is-error', !!isError);
+  el.classList.add('visible');
+  clearTimeout(el._hideTimer);
+  el._hideTimer = setTimeout(() => el.classList.remove('visible'), 2600);
+}
+
+function updateRideNoteButtonUI() {
+  const btn = document.getElementById('ride-note-btn');
+  if (!btn) return;
+  const recording = !!rideNoteRecorder && rideNoteRecorder.state === 'recording';
+  btn.classList.toggle('recording', recording);
+  if (recording && rideNoteStartedAt) {
+    const elapsed = Math.floor((Date.now() - rideNoteStartedAt.getTime()) / 1000);
+    btn.textContent = `⏹ ${elapsed}s`;
+  } else {
+    btn.textContent = '🎙️';
+  }
+}
+
+async function toggleRideNoteRecording() {
+  if (rideNoteRecorder && rideNoteRecorder.state === 'recording') {
+    stopRideNoteRecording();
+    return;
+  }
+  try {
+    rideNoteStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    showRideNoteToast('⚠️ Microphone access denied.', true);
+    return;
+  }
+  const mimeType = pickRideNoteMimeType();
+  try {
+    rideNoteRecorder = mimeType ? new MediaRecorder(rideNoteStream, { mimeType }) : new MediaRecorder(rideNoteStream);
+  } catch (e) {
+    showRideNoteToast('⚠️ Recording not supported on this browser.', true);
+    rideNoteStream.getTracks().forEach(t => t.stop());
+    rideNoteStream = null;
+    return;
+  }
+  rideNoteChunks = [];
+  rideNoteStartedAt = new Date();
+  rideNoteStartLatLng = rideLocationMarker ? [rideLocationMarker.getLatLng().lat, rideLocationMarker.getLatLng().lng] : null;
+  rideNoteRecorder.ondataavailable = (e) => { if (e.data && e.data.size) rideNoteChunks.push(e.data); };
+  rideNoteRecorder.onstop = onRideNoteRecordingStop;
+  rideNoteRecorder.start();
+  updateRideNoteButtonUI();
+  rideNoteTimerHandle = setInterval(updateRideNoteButtonUI, 1000);
+  rideNoteAutoStopHandle = setTimeout(() => stopRideNoteRecording(), RIDE_NOTE_MAX_SEC * 1000);
+  showRideNoteToast('🎙️ Recording… tap again to stop');
+}
+
+function stopRideNoteRecording() {
+  if (!rideNoteRecorder || rideNoteRecorder.state !== 'recording') return;
+  clearTimeout(rideNoteAutoStopHandle);
+  rideNoteAutoStopHandle = null;
+  rideNoteRecorder.stop(); // onstop (onRideNoteRecordingStop) does the actual save
+}
+
+async function onRideNoteRecordingStop() {
+  clearInterval(rideNoteTimerHandle);
+  rideNoteTimerHandle = null;
+  if (rideNoteStream) { rideNoteStream.getTracks().forEach(t => t.stop()); rideNoteStream = null; }
+  const durationSec = rideNoteStartedAt ? Math.round((Date.now() - rideNoteStartedAt.getTime()) / 1000) : 0;
+  const mimeType = rideNoteRecorder.mimeType || 'audio/webm';
+  const startedAt = rideNoteStartedAt;
+  const startLatLng = rideNoteStartLatLng;
+  const chunks = rideNoteChunks;
+  rideNoteRecorder = null;
+  rideNoteChunks = [];
+  rideNoteStartedAt = null;
+  rideNoteStartLatLng = null;
+  updateRideNoteButtonUI();
+  if (!chunks.length || durationSec < 1) { showRideNoteToast('Recording too short — discarded.', true); return; }
+  const blob = new Blob(chunks, { type: mimeType });
+  await saveRideNote(blob, mimeType, durationSec, startLatLng, startedAt);
+}
+
+async function saveRideNote(blob, mimeType, durationSec, latLng, startedAt) {
+  const key = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : hashString(`${Date.now()}-${Math.random()}`);
+  const note = {
+    id: key,
+    lat: latLng ? latLng[0] : null,
+    lng: latLng ? latLng[1] : null,
+    timestamp: startedAt.toISOString(),
+    durationSec,
+    mimeType,
+  };
+  try {
+    await fetch(`/api/ride-notes-audio/${key}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob });
+    rideNotes.push(note);
+    // Cap at RIDE_NOTE_MAX_COUNT — drop the oldest (by recorded time, not
+    // array order, though in practice they're the same) rather than let the
+    // list grow unbounded across rides the rider forgets to review.
+    rideNotes.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    while (rideNotes.length > RIDE_NOTE_MAX_COUNT) {
+      const dropped = rideNotes.shift();
+      fetch(`/api/ride-notes-audio/${dropped.id}`, { method: 'DELETE' }).catch(() => {});
+    }
+    await fetch('/api/ride-notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rideNotes) });
+    showRideNoteToast('✅ Note saved');
+    updateRideNotesBadge();
+  } catch (e) {
+    console.warn('Could not save ride note:', e.message);
+    showRideNoteToast('⚠️ Could not save note — check connection.', true);
+  }
+}
+
+function updateRideNotesBadge() {
+  const btn = document.getElementById('ride-notes-open-btn');
+  const badge = document.getElementById('ride-notes-count-badge');
+  if (!btn || !badge) return;
+  btn.style.display = rideNotes.length ? '' : 'none';
+  badge.textContent = `(${rideNotes.length})`;
+}
+
+// Best-effort context for a note: which existing trail entry is nearest to
+// where it was recorded, so a note reads as "near Assabet River Rail Trail"
+// instead of just raw coordinates when reviewing back at a desk later.
+function nearestTrailToNote(note) {
+  if (note.lat == null || note.lng == null) return null;
+  let best = null, bestMi = Infinity;
+  for (const n of NEARBY_TRAILS) {
+    const mi = haversineMi(note.lat, note.lng, n.lat, n.lng);
+    if (mi < bestMi) { bestMi = mi; best = n; }
+  }
+  return best && bestMi < 5 ? { trail: best, mi: bestMi } : null;
+}
+
+function renderRideNoteCard(note) {
+  const when = new Date(note.timestamp);
+  const whenStr = when.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const nearest = nearestTrailToNote(note);
+  const hasLoc = note.lat != null && note.lng != null;
+  const locLink = hasLoc
+    ? `<a href="${appleMapsUrl({ lat: note.lat, lng: note.lng, name: `Trail note — ${whenStr}` })}" target="_blank" rel="noopener">📍 ${note.lat.toFixed(5)}, ${note.lng.toFixed(5)}</a>`
+    : '📍 location unavailable';
+  const nearestStr = nearest ? ` · near <a href="#" onclick="closeRideNotesModal();focusNearby('${nearest.trail.id}');return false;">${escHtml(nearest.trail.name)}</a> (${nearest.mi.toFixed(1)} mi)` : '';
+  return `<div class="ride-note-card" data-note-id="${note.id}">
+    <div class="ride-note-card-top">
+      <div class="ride-note-card-when">${whenStr}</div>
+      <div class="ride-note-card-dur">${note.durationSec}s</div>
+    </div>
+    <div class="ride-note-card-context">${locLink}${nearestStr}</div>
+    <audio controls preload="none" src="/api/ride-notes-audio/${note.id}"></audio>
+    <div class="ride-note-card-actions">
+      <button class="ride-note-card-delete" onclick="deleteRideNote('${note.id}')">🗑️ Delete</button>
+    </div>
+  </div>`;
+}
+
+function renderRideNotesList() {
+  const el = document.getElementById('ride-notes-list');
+  if (!el) return;
+  if (!rideNotes.length) {
+    el.innerHTML = `<div class="ride-notes-empty">No trail notes yet. Record one from the 🎙️ button in Ride Mode.</div>`;
+    return;
+  }
+  // Newest first — most recently-recorded (likely the ride just finished) is what a rider wants to review first.
+  const sorted = [...rideNotes].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  el.innerHTML = sorted.map(renderRideNoteCard).join('');
+}
+
+function openRideNotesModal() {
+  renderRideNotesList();
+  document.getElementById('ride-notes-modal-backdrop').classList.add('visible');
+}
+function closeRideNotesModal() {
+  document.getElementById('ride-notes-modal-backdrop').classList.remove('visible');
+  // Stop any note that's mid-playback rather than leaving audio running behind a closed modal.
+  document.querySelectorAll('#ride-notes-list audio').forEach(a => a.pause());
+}
+
+async function deleteRideNote(id) {
+  rideNotes = rideNotes.filter(n => n.id !== id);
+  try {
+    await fetch(`/api/ride-notes-audio/${id}`, { method: 'DELETE' });
+    await fetch('/api/ride-notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rideNotes) });
+  } catch (e) { console.warn('Could not delete ride note:', e.message); }
+  renderRideNotesList();
+  updateRideNotesBadge();
+}
+
+async function clearAllRideNotes() {
+  if (!rideNotes.length) return;
+  if (!confirm(`Delete all ${rideNotes.length} trail note${rideNotes.length === 1 ? '' : 's'}? This can't be undone.`)) return;
+  const ids = rideNotes.map(n => n.id);
+  rideNotes = [];
+  try {
+    await Promise.all(ids.map(id => fetch(`/api/ride-notes-audio/${id}`, { method: 'DELETE' }).catch(() => {})));
+    await fetch('/api/ride-notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rideNotes) });
+  } catch (e) { console.warn('Could not clear ride notes:', e.message); }
+  renderRideNotesList();
+  updateRideNotesBadge();
+}
+
 // Heading-up rotation — keeps the direction of travel pointed at the top of
 // the screen, for a phone mounted sideways on the bike (notch-left landscape,
 // so the physical "top" of the phone is the right edge). Always on in Ride
 // Mode; a compass badge (top-left) shows which way north is relative to the
 // rotated view, plus the rider's current cardinal/degree heading.
-let rideHeadingDeg = null;          // current smoothed heading, degrees clockwise from true north
+let rideHeadingDeg = null;          // current smoothed heading, degrees clockwise from true north, wrapped to [0,360)
+let rideFrameRotationDeg = null;    // same value but unwrapped/continuous — what CSS rotate() actually uses, so crossing the 0/360 boundary never produces a 350°+ jump for the transition to animate through
 let rideLastHeadingLatLng = null;   // previous fix, for the bearing-fallback when coords.heading is unavailable
 let rideResizeHandler = null;
 const RIDE_COMPASS_DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
@@ -3993,7 +4375,7 @@ function updateRideHeadingRotation() {
   // convention). The compass needle gets the same rotation, since it points
   // at true north — a fixed direction on the map — not at the rider's own
   // (always-up) heading.
-  const rot = rideHeadingDeg == null ? '' : `rotate(${-rideHeadingDeg}deg)`;
+  const rot = rideFrameRotationDeg == null ? '' : `rotate(${-rideFrameRotationDeg}deg)`;
   frame.style.transform = rot;
   if (needle) needle.style.transform = rot;
   if (label) {
@@ -4015,9 +4397,16 @@ function onRideHeadingSample(latitude, longitude, rawHeading) {
   if (rawHeading == null || isNaN(rawHeading)) return;
   if (rideHeadingDeg == null) {
     rideHeadingDeg = rawHeading;
+    rideFrameRotationDeg = rawHeading;
   } else {
     // Low-pass filter so the rotation eases rather than snapping on every fix.
-    rideHeadingDeg = (rideHeadingDeg + angleDelta(rideHeadingDeg, rawHeading) * 0.35 + 360) % 360;
+    const delta = angleDelta(rideHeadingDeg, rawHeading) * 0.35;
+    rideHeadingDeg = (rideHeadingDeg + delta + 360) % 360;
+    // Accumulate unwrapped, so a heading crossing the 0/360 boundary (e.g.
+    // 359° -> 2°) still only moves the CSS rotation by the small real delta
+    // instead of wrapping rideFrameRotationDeg too and handing the 0.35s
+    // transition a ~358° jump to animate through (the near-360° spin bug).
+    rideFrameRotationDeg += delta;
   }
   updateRideHeadingRotation();
 }
@@ -4112,6 +4501,7 @@ function stopRideLocationWatch() {
   if (rideLocationMarker) { map.removeLayer(rideLocationMarker); rideLocationMarker = null; }
   if (rideAccuracyCircle) { map.removeLayer(rideAccuracyCircle); rideAccuracyCircle = null; }
   rideHeadingDeg = null;
+  rideFrameRotationDeg = null;
   rideLastHeadingLatLng = null;
 }
 
@@ -4188,6 +4578,7 @@ function exitRideMode() {
   // from running, especially resetRideMapLayout() below, or Ride Mode's map
   // sizing/rotation gets stuck applied after the UI has already exited.
   try { map.zoomControl.setPosition('topleft'); } catch (e) { console.warn('exitRideMode: zoomControl reposition failed', e); } // restore normal-view position
+  try { if (rideNoteRecorder && rideNoteRecorder.state === 'recording') stopRideNoteRecording(); } catch (e) { console.warn('exitRideMode: stopRideNoteRecording failed', e); } // save whatever was captured rather than losing it
   try { stopRideLocationWatch(); } catch (e) { console.warn('exitRideMode: stopRideLocationWatch failed', e); }
   try { releaseWakeLock(); } catch (e) { console.warn('exitRideMode: releaseWakeLock failed', e); }
   try { tryExitImmersiveMode(); } catch (e) { console.warn('exitRideMode: tryExitImmersiveMode failed', e); }
@@ -4203,7 +4594,11 @@ function exitRideMode() {
   resetRideMapLayout();
   lastRideModeExitAt = Date.now();
 }
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && rideModeActive) exitRideMode(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (rideModeActive) exitRideMode();
+  else if (document.getElementById('ride-notes-modal-backdrop').classList.contains('visible')) closeRideNotesModal();
+});
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 (async () => {
@@ -4211,9 +4606,10 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && rideMode
   // Migrate any old data that had status='wishlist'
   trails = trails.filter(t => !t.status || t.status === 'ridden');
   trails.forEach(t => { delete t.status; });
-  await Promise.all([loadTrailGeometryCache(), loadIgnoredTrails(), loadTrailFailureCounts()]); // fast — hydrates trail lines from the runtime cache + ignore list + retry-cap state before first render
+  await Promise.all([loadTrailGeometryCache(), loadIgnoredTrails(), loadTrailFailureCounts(), loadRideNotes()]); // fast — hydrates trail lines from the runtime cache + ignore list + retry-cap state + ride notes before first render
   render();
   renderOfflineManager();
+  updateRideNotesBadge();
   // On iOS, land on Nearby (browsing trails) rather than My Rides — that's
   // the panel most useful to open straight into on a phone.
   if (isIOS()) switchTab('nearby');
