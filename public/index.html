@@ -2041,7 +2041,6 @@ function refreshNearbyMarkers() {
   });
 
   NEARBY_TRAILS.forEach(n => {
-    const isRidden = !!riddenForNearby(n.id);
     const segments = TRAIL_POLYLINES?.[n.id]; // real trail path, once fetched
     const wantLine = segments && segments.length > 0;
 
@@ -2071,12 +2070,16 @@ function refreshNearbyMarkers() {
       nearbyMarkers[n.id].setPopupContent(buildNearbyPopup(n));
     }
 
-    // Dim once ridden — the actual ridden GPS track (green) draws on top separately.
+    // Always render at full opacity, ridden or not — only three colors on
+    // this map now (green ridden track, dark-blue unridden trail, light-blue
+    // on-road), no dimmed/lighter shade for a partially-ridden trail. The
+    // actual ridden GPS track (green) draws on top separately and is what
+    // shows ridden vs. not, at whatever granularity the real ride covered.
     const layer = nearbyMarkers[n.id];
     if (nearbyIsLine[n.id]) {
-      layer.setStyle({ opacity: isRidden ? 0.35 : 0.9 });
+      layer.setStyle({ opacity: 0.9 });
     } else {
-      layer.setOpacity(isRidden ? 0.25 : 1);
+      layer.setOpacity(1);
     }
 
     // Optional lighter-blue overlay for a trail's on-road preferred-route
@@ -2088,7 +2091,7 @@ function refreshNearbyMarkers() {
         nearbyRoadMarkers[n.id] = L.polyline(roadSegments, { color: NEARBY_ROAD_LINE_COLOR, weight: 5, opacity: 0.9, lineCap: 'round' })
           .addTo(map).bindPopup(buildNearbyPopup(n), { maxWidth: 220 });
       }
-      nearbyRoadMarkers[n.id].setStyle({ opacity: isRidden ? 0.3 : 0.9 });
+      nearbyRoadMarkers[n.id].setStyle({ opacity: 0.9 });
     } else if (nearbyRoadMarkers[n.id]) {
       nearbyRoadMarkers[n.id].remove();
       delete nearbyRoadMarkers[n.id];
