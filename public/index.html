@@ -1825,7 +1825,7 @@ const map = L.map('map', { renderer: L.canvas({ tolerance: 15 }) }).setView([42.
 // CartoDB Voyager instead of stock OSM tiles — keeps street names/road network
 // visible but drops the highway route-shield numbers (I-190, MA-2, etc.) baked
 // into standard OSM raster tiles, which cluttered the map at a glance.
-L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=__CARTO_API_KEY__', {
   attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
   maxZoom: 20,
   subdomains: 'abcd',
@@ -2561,7 +2561,7 @@ function renderMatchMap(cands) {
   if (!mapEl) return;
   if (!matchMapInstance) {
     matchMapInstance = L.map('match-map', { attributionControl: false, renderer: L.canvas({ tolerance: 15 }) });
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd' }).addTo(matchMapInstance);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=__CARTO_API_KEY__', { maxZoom: 20, subdomains: 'abcd' }).addTo(matchMapInstance);
   }
   matchMapLayers.forEach(l => l.remove());
   matchMapLayers = [];
@@ -3860,7 +3860,7 @@ function lngLatToTile(lat, lng, z) {
 const TILE_SUBDOMAINS = 'abcd';
 function tileUrl(z, x, y) {
   const sub = TILE_SUBDOMAINS[(x + y) % TILE_SUBDOMAINS.length];
-  return `https://${sub}.basemaps.cartocdn.com/rastertiles/voyager/${z}/${x}/${y}.png`;
+  return `https://${sub}.basemaps.cartocdn.com/rastertiles/voyager/${z}/${x}/${y}.png?key=__CARTO_API_KEY__`;
 }
 
 const OFFLINE_ZOOMS = [13, 14, 15, 16];

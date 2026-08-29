@@ -23,13 +23,23 @@ const SAFE_KEY   = /^[a-zA-Z0-9_-]{1,80}$/;
 // We replace the placeholders once at startup and serve the cached result.
 const BUILD_SHA  = process.env.BUILD_SHA  || '';
 const BUILD_DATE = process.env.BUILD_DATE || '';
+// CARTO_API_KEY is a runtime secret (a real, personal, quota-tracked key), set
+// via docker-compose's environment/.env substitution on each host — never a
+// CI-baked build ARG like BUILD_SHA/DATE above, and never committed to git.
+// It isn't domain/referrer-locked (confirmed against CARTO's own basemaps
+// signup docs), so the same key works unmodified across every origin this app
+// is reached by — localhost, ugreen.local, a bare LAN IP, and the Tailscale
+// HTTPS hostname all just work with no per-origin config.
+const CARTO_API_KEY = process.env.CARTO_API_KEY || '';
 const INDEX_PATH = path.join(__dirname, 'public', 'index.html');
 let INDEX_HTML = null;
 try {
   INDEX_HTML = fs.readFileSync(INDEX_PATH, 'utf8')
     .replace('content="__BUILD_SHA__"',  `content="${BUILD_SHA}"`)
-    .replace('content="__BUILD_DATE__"', `content="${BUILD_DATE}"`);
+    .replace('content="__BUILD_DATE__"', `content="${BUILD_DATE}"`)
+    .replace(/__CARTO_API_KEY__/g, CARTO_API_KEY);
   console.log(`Build: sha=${BUILD_SHA || '(dev)'} date=${BUILD_DATE || '(dev)'}`);
+  if (!CARTO_API_KEY) console.warn('CARTO_API_KEY not set — map tiles will show a "needs API key" watermark.');
 } catch (e) { console.warn('Could not read index.html:', e.message); }
 
 app.use(express.json({ limit: '20mb' }));
@@ -226,8 +236,15 @@ app.delete('/api/ride-notes-audio/:key', (req, res) => {
 // ── Catch-all → SPA (serve build-stamped HTML) ───────────────────────────────
 app.get('*', (req, res) => {
   // In dev (no BUILD_SHA), read fresh from disk each request so HTML edits are
-  // picked up without a server restart. In production, serve the stamped cache.
-  if (!BUILD_SHA) return res.sendFile(INDEX_PATH);
+  // picked up without a server restart — but still stamp CARTO_API_KEY (a
+  // runtime env var, not a CI build artifact like BUILD_SHA/DATE) so local
+  // dev tiles work too instead of literally requesting key=__CARTO_API_KEY__.
+  if (!BUILD_SHA) {
+    try {
+      const html = fs.readFileSync(INDEX_PATH, 'utf8').replace(/__CARTO_API_KEY__/g, CARTO_API_KEY);
+      return res.type('html').send(html);
+    } catch (e) { return res.sendFile(INDEX_PATH); }
+  }
   if (INDEX_HTML) return res.type('html').send(INDEX_HTML);
   res.sendFile(INDEX_PATH);
 });

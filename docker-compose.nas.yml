@@ -11,6 +11,11 @@ services:
     environment:
       - PORT=3000
       - RIDES_FILE=/data/rides.json
+      # Real personal key from https://carto.com/basemaps/apikey/ — set it in a
+      # sibling .env file (gitignored, never commit the actual key). Not
+      # domain/referrer-locked, so the same key works across every origin this
+      # app is reached by (localhost, ugreen.local, a bare LAN IP, Tailscale).
+      - CARTO_API_KEY=${CARTO_API_KEY}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/rides"]

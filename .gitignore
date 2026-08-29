@@ -8,3 +8,4 @@ node_modules/
 /trail-geometry-seed/
 /penna/
 /masstrails-grants/
+.env
